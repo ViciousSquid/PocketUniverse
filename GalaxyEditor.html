@@ -123,10 +123,20 @@
         #galaxy-stats {
             position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
             background: var(--panel); padding: 8px 20px; border-radius: 8px;
-            border: 1px solid var(--border); pointer-events: none;
+            border: 1px solid var(--border); pointer-events: auto;
             font-family: monospace; color: #888; font-size: 11px; z-index: 10;
+            display: flex; align-items: center; gap: 15px;
         }
         #galaxy-stats span { color: var(--accent); }
+        #galaxy-stats .galaxy-view-btn {
+            background: #222; border: 1px solid #444; color: #fff; 
+            padding: 6px 12px; border-radius: 4px; cursor: pointer;
+            font-size: 11px; font-weight: bold; text-transform: uppercase;
+            transition: all 0.2s;
+        }
+        #galaxy-stats .galaxy-view-btn:hover {
+            background: var(--accent); color: #000; border-color: var(--accent);
+        }
 
         /* Spiral arm selector */
         .arm-selector { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 5px; }
@@ -136,6 +146,19 @@
         }
         .arm-btn:hover { background: #333; color: #fff; }
         .arm-btn.active { background: var(--accent2); color: #000; border-color: var(--accent2); }
+
+        /* Body selection label */
+        #body-label {
+            position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+            background: var(--panel); padding: 12px 24px; border-radius: 8px;
+            border: 1px solid var(--accent); pointer-events: none;
+            font-family: 'Segoe UI', sans-serif; font-size: 14px; z-index: 15;
+            display: none; text-align: center;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+        #body-label .body-name { color: #fff; font-size: 18px; font-weight: bold; margin-bottom: 4px; }
+        #body-label .body-type { color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+        #body-label .body-hint { color: #666; font-size: 10px; margin-top: 6px; }
     </style>
     <script type="importmap">
         {
@@ -170,6 +193,8 @@
     </div>
 
     <div id="galaxy-stats">
+        <button class="galaxy-view-btn" id="btnGalaxyView">🌌 Galaxy View</button>
+        <span style="color: #444;">|</span>
         Systems: <span id="statSystems">0</span> | 
         Bodies: <span id="statBodies">0</span> | 
         Radius: <span id="statRadius">0</span> ly
@@ -200,7 +225,7 @@
                 <div class="toggle-row">
                     <label>Show Detailed Systems</label>
                     <label class="toggle-switch">
-                        <input type="checkbox" id="toggleDetailView">
+                        <input type="checkbox" id="toggleDetailView" checked>
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
@@ -256,6 +281,12 @@
         <button class="zoom-btn" id="btnZoomIn">+</button>
         <span style="color:#666; margin-left: 10px;">|</span>
         <button class="zoom-btn" id="btnResetView" style="width: auto; padding: 0 10px; font-size: 11px;">⌂</button>
+    </div>
+
+    <div id="body-label">
+        <div class="body-name" id="bodyLabelName">Planet Name</div>
+        <div class="body-type" id="bodyLabelType">Planet</div>
+        <div class="body-hint">Press ESC to return</div>
     </div>
 
     <script>
@@ -830,8 +861,12 @@
         const solarSystems = [];
         let selectedSystem = null;
         let systemCounter = 0;
-        let detailViewEnabled = false;
+        let detailViewEnabled = true;
         let systemScale = 3.0;
+
+        // Body selection state
+        let selectedBody = null;
+        let savedCameraState = null;
 
         // --- UI HELPERS ---
         const $ = (id) => document.getElementById(id);
@@ -840,6 +875,9 @@
         // --- DETAIL VIEW TOGGLE ---
         $('toggleDetailView').onchange = (e) => {
             detailViewEnabled = e.target.checked;
+            if (!detailViewEnabled && selectedBody) {
+                deselectBody();
+            }
             for (const sys of solarSystems) {
                 sys.setDetailMode(detailViewEnabled, systemScale);
             }
@@ -849,6 +887,8 @@
             systemScale = parseFloat(e.target.value);
             $('systemScaleVal').textContent = systemScale.toFixed(1);
             if (detailViewEnabled) {
+                // Deselect body since bodies get rebuilt
+                if (selectedBody) deselectBody();
                 for (const sys of solarSystems) {
                     sys.updateDetailScale(systemScale);
                 }
@@ -1280,6 +1320,10 @@
 
         $('btnDeleteSystem').onclick = () => {
             if (!selectedSystem) return;
+            // Deselect body if it was in this system
+            if (selectedBody && selectedBody.parentSystem === selectedSystem) {
+                deselectBody();
+            }
             const idx = solarSystems.indexOf(selectedSystem);
             if (idx > -1) {
                 selectedSystem.dispose();
@@ -1335,12 +1379,109 @@
             updateZoomDisplay();
         };
 
+        $('btnGalaxyView').onclick = () => {
+            // Deselect any selected body
+            if (selectedBody) {
+                $('body-label').style.display = 'none';
+                selectedBody = null;
+                savedCameraState = null;
+            }
+            // Animate to initial galaxy view
+            animateCameraToPosition(
+                new THREE.Vector3(0, 400, 300),
+                new THREE.Vector3(0, 0, 0)
+            );
+        };
+
         controls.addEventListener('change', updateZoomDisplay);
 
         // --- RAYCASTING ---
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
+        // Body selection functions
+        function selectBody(body, system) {
+            // Save camera state before zooming
+            savedCameraState = {
+                position: camera.position.clone(),
+                target: controls.target.clone()
+            };
+            
+            selectedBody = body;
+            selectedSystem = system;
+            
+            // Show label
+            const bodyLabel = $('body-label');
+            $('bodyLabelName').textContent = body.data.seed;
+            $('bodyLabelType').textContent = body.type.charAt(0).toUpperCase() + body.type.slice(1);
+            bodyLabel.style.display = 'block';
+            
+            // Animate camera to body
+            animateCameraToBody(body, system);
+        }
+
+        function deselectBody() {
+            if (!selectedBody) return;
+            
+            // Hide label
+            $('body-label').style.display = 'none';
+            
+            // Restore camera
+            if (savedCameraState) {
+                animateCameraToPosition(savedCameraState.position, savedCameraState.target);
+                savedCameraState = null;
+            }
+            
+            selectedBody = null;
+        }
+
+        function getBodyWorldPosition(body, system) {
+            // Get the world position of the body mesh
+            const worldPos = new THREE.Vector3();
+            body.mesh.getWorldPosition(worldPos);
+            return worldPos;
+        }
+
+        function animateCameraToBody(body, system) {
+            const targetPos = getBodyWorldPosition(body, system);
+            
+            // Calculate view distance based on body size
+            const bodySize = body.baseScale * systemScale;
+            const viewDistance = Math.max(bodySize * 4, 5);
+            
+            // Calculate new camera position (offset from body)
+            const offset = new THREE.Vector3(viewDistance * 0.7, viewDistance * 0.5, viewDistance * 0.7);
+            const newCamPos = targetPos.clone().add(offset);
+            
+            animateCameraToPosition(newCamPos, targetPos);
+        }
+
+        function animateCameraToPosition(newPosition, newTarget) {
+            const startPos = camera.position.clone();
+            const startTarget = controls.target.clone();
+            const duration = 500;
+            const startTime = performance.now();
+            
+            function animate() {
+                const elapsed = performance.now() - startTime;
+                const t = Math.min(elapsed / duration, 1);
+                
+                // Smooth easing
+                const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+                
+                camera.position.lerpVectors(startPos, newPosition, ease);
+                controls.target.lerpVectors(startTarget, newTarget, ease);
+                controls.update();
+                updateZoomDisplay();
+                
+                if (t < 1) {
+                    requestAnimationFrame(animate);
+                }
+            }
+            animate();
+        }
+
+        // Click handler
         renderer.domElement.addEventListener('click', (e) => {
             if (e.target !== renderer.domElement) return;
             
@@ -1349,11 +1490,21 @@
             
             raycaster.setFromCamera(mouse, camera);
             
+            // Build list of clickable objects
             const clickables = [];
             for (const sys of solarSystems) {
-                clickables.push({ obj: sys.marker, sys });
-                for (const body of sys.celestialBodies) {
-                    clickables.push({ obj: body.mesh, sys });
+                // Add system marker
+                clickables.push({ obj: sys.marker, sys, body: null });
+                
+                // Add celestial bodies (when in detail view)
+                if (detailViewEnabled) {
+                    for (const body of sys.celestialBodies) {
+                        clickables.push({ obj: body.mesh, sys, body });
+                        // Add child bodies (moons)
+                        for (const child of body.childBodies) {
+                            clickables.push({ obj: child.mesh, sys, body: child });
+                        }
+                    }
                 }
             }
             
@@ -1361,7 +1512,20 @@
             
             if (intersects.length > 0) {
                 const hit = clickables.find(c => c.obj === intersects[0].object);
-                if (hit) selectSystem(hit.sys);
+                if (hit) {
+                    if (hit.body) {
+                        // Clicked on a celestial body
+                        selectBody(hit.body, hit.sys);
+                        selectSystem(hit.sys);
+                    } else {
+                        // Clicked on system marker
+                        if (selectedBody) deselectBody();
+                        selectSystem(hit.sys);
+                    }
+                }
+            } else {
+                // Clicked on empty space - deselect body but keep system
+                if (selectedBody) deselectBody();
             }
         });
 
@@ -1394,6 +1558,15 @@
             }
         });
 
+        // ESC key handler
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (selectedBody) {
+                    deselectBody();
+                }
+            }
+        });
+
         // --- ANIMATION LOOP ---
         const clock = new THREE.Clock();
         
@@ -1412,6 +1585,12 @@
             if (detailViewEnabled) {
                 for (const sys of solarSystems) {
                     sys.update(dt, systemScale);
+                }
+                
+                // Track selected body with camera
+                if (selectedBody && savedCameraState) {
+                    const targetPos = getBodyWorldPosition(selectedBody, selectedSystem);
+                    controls.target.copy(targetPos);
                 }
             }
             
