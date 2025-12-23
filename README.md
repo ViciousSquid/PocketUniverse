@@ -20,13 +20,19 @@ Click <a href="https://github.com/ViciousSquid/PocketUniverse/archive/refs/heads
 
 ### Screenshots:
 
-* Planet Editor
+#### Planet Editor:
 
 <img width="2135" height="1340" alt="image" src="https://github.com/user-attachments/assets/accfa8f9-ce17-450c-9acc-bad6f82aa424" />
 
 -----------------
 
-* Solar System Editor
+#### Solar System Editor:
 
 <img width="2152" height="1298" alt="image" src="https://github.com/user-attachments/assets/751789bb-c527-4ba6-99c7-f5b5d67d7fcd" />
+
+-----------------
+
+#### Galaxy Editor
+<img width="2156" height="1309" alt="image" src="https://github.com/user-attachments/assets/36bd0950-c5f1-4290-938a-b2a350be2492" />
+
 
