@@ -4,7 +4,9 @@
 
 2. **SolarSystemEditor.html** - Imports the `sun_*` , `planet_*` and `moon_*` files, Exports `solarsystem_*` ZIP file
 
-3. **GalaxyEditor.html** - Imports `solarsystem_*` zip files 
+3. **GalaxyEditor.html** - Imports `solarsystem_*` zip files
+
+   All tools can randomly generate 
 
  _example planets, moons and suns can be found in the `planets` folder_
 
