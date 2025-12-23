@@ -2,47 +2,41 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Planet Editor v1.1 (Mobile)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Planet Editor v1.1</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root { --accent: #00ff88; --bg: #0a0a10; --panel: rgba(10, 10, 12, 0.95); }
-        body { margin: 0; overflow: hidden; background: #000; color: #e0e0e0; font-family: 'Segoe UI', Roboto, sans-serif; font-size: 13px; touch-action: none; }
+        body { margin: 0; overflow: hidden; background: #000; color: #e0e0e0; font-family: 'Segoe UI', Roboto, sans-serif; font-size: 13px; }
         
-        #container { position: absolute; top: 0; left: 0; width: 100%; height: 100dvh; z-index: 0; }
+        #container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
         
         #ui-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
             display: flex; justify-content: space-between; padding: 20px; box-sizing: border-box;
-            flex-wrap: wrap; /* Allow wrapping on mobile */
-            overflow: hidden;
         }
         
         .panel {
             pointer-events: auto; background: var(--panel); backdrop-filter: blur(12px);
             padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);
             display: flex; flex-direction: column; gap: 12px;
-            max-height: 85vh; overflow-y: auto;
+            max-height: 95%; overflow-y: auto;
             box-shadow: 0 8px 40px rgba(0,0,0,0.8);
-            transition: max-height 0.3s, width 0.3s;
-            /* Scrollbar styling for firefox mobile */
-            scrollbar-width: thin;
-            scrollbar-color: var(--accent) #222;
         }
         
-        .panel.collapsed { 
-            max-height: 50px; /* Force height on collapse */
-            overflow: hidden; 
-            width: auto !important; 
+        .panel.collapsed { max-height: none; overflow: visible; 
+            width: auto !important; /* Override fixed ID widths so it shrinks */
         }
-        .panel.collapsed .panel-content { display: none; }
+        .panel.collapsed .panel-content { 
+            display: none; 
+        }
         
-        .panel-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; min-height: 24px; }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
         .panel-header:hover h2 { text-shadow: 0 0 8px var(--accent); }
         
-        /* Larger touch targets for mobile */
         .collapse-btn {
-            background: none; border: 1px solid #444; color: #888; width: 32px; height: 32px;
+            background: none; border: 1px solid #444; color: #888; width: 24px; height: 24px;
             border-radius: 4px; cursor: pointer; font-size: 12px; display: flex; align-items: center;
             justify-content: center; transition: all 0.2s; flex-shrink: 0;
         }
@@ -51,19 +45,6 @@
         
         #controls-left { width: 280px; }
         #controls-right { width: 260px; }
-
-        /* Mobile Responsive CSS */
-        @media (max-width: 768px) {
-            #ui-layer { padding: 10px; flex-direction: column; justify-content: flex-start; gap: 10px; }
-            #controls-left, #controls-right { width: 100%; max-height: 40vh; }
-            
-            /* Hide the second panel initially on mobile to save space, or stack them */
-            #controls-right { margin-top: auto; } 
-            
-            /* Make sliders easier to touch */
-            input[type=range] { height: 12px; }
-            input[type=range]::-webkit-slider-thumb { width: 20px; height: 20px; }
-        }
 
         h2 { margin: 0; font-size: 14px; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; font-weight: 800; }
         h3 { margin: 10px 0 2px 0; font-size: 11px; color: #777; font-weight: 700; text-transform: uppercase; border-bottom: 1px solid #333; padding-bottom: 4px; }
@@ -98,16 +79,11 @@
         button {
             flex: 1; padding: 10px; background: #222; color: #aaa; border: 1px solid #333; border-radius: 4px; 
             cursor: pointer; transition: all 0.2s; font-size: 10px; font-weight: bold; text-transform: uppercase;
-            touch-action: manipulation;
         }
         button:hover { background: #333; color: #fff; }
         button.active-geo { background: var(--accent); color: #000; border-color: var(--accent); }
         
-        .seed-container { 
-            display: flex; gap: 5px; margin-bottom: 10px;
-            border: 2px solid #FFD700; border-radius: 6px; padding: 8px;
-            background-color: rgba(255, 215, 0, 0.1); box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
-        }
+        .seed-container { display: flex; gap: 5px; margin-bottom: 10px; }
         #seedInput { font-family: monospace; }
         
         canvas#exportCanvas { display: none; }
@@ -117,12 +93,53 @@
         
         #center-info {
             pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 20px;
-            position: absolute; bottom: 0; width: 100%; z-index: 5;
         }
         
         #fps-counter {
             pointer-events: auto; background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 4px;
             font-family: monospace; font-size: 12px; color: var(--accent);
+        }
+        .seed-container {
+            border: 2px solid #FFD700;  /* Yellow border */
+            border-radius: 6px;          /* Rounded corners */
+            padding: 8px;
+            background-color: rgba(255, 215, 0, 0.1); /* Light yellow background */
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); /* Yellow glow effect */
+        }
+
+        /* ===== MOBILE OPTIMIZATIONS ===== */
+        @media (max-width: 768px) {
+            #ui-layer {
+                padding: 10px;
+                flex-direction: column !important;
+                justify-content: flex-start !important;
+                height: 100%;
+                overflow: hidden;
+            }
+            
+            .panel {
+                width: 100% !important;
+                max-height: 45vh !important;
+                margin-bottom: 8px;
+            }
+            
+            .panel.collapsed {
+                max-height: 40px !important;
+            }
+            
+            #controls-left, #controls-right {
+                width: 100% !important;
+            }
+            
+            #center-info {
+                display: none !important;
+            }
+            
+            body {
+                touch-action: none;
+                -webkit-user-select: none;
+                user-select: none;
+            }
         }
     </style>
 
@@ -197,6 +214,10 @@
             </div>
         </div>
 
+        <div id="center-info">
+            <div id="fps-counter">FPS: --</div>
+        </div>
+
         <div id="controls-right" class="panel">
             <div class="panel-header" onclick="togglePanel('controls-right')">
                 <h2>Biomes</h2>
@@ -247,10 +268,6 @@
             </div>
         </div>
     </div>
-    
-    <div id="center-info">
-        <div id="fps-counter">FPS: --</div>
-    </div>
 
     <canvas id="exportCanvas" width="2048" height="1024"></canvas>
 
@@ -258,11 +275,11 @@
         function togglePanel(panelId) {
             const panel = document.getElementById(panelId);
             panel.classList.toggle('collapsed');
-        }
-        
-        // Mobile: Auto collapse right panel on load
-        if(window.innerWidth < 768) {
-            document.getElementById('controls-right').classList.add('collapsed');
+            
+            // Add haptic feedback if available
+            if (navigator.vibrate) {
+                navigator.vibrate(10);
+            }
         }
     </script>
 
@@ -274,17 +291,6 @@
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
         import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
-
-        // --- MOBILE DETECTION ---
-        // We reduce geometry complexity if on mobile to maintain FPS
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 800;
-        
-        const GEOMETRY_SEGMENTS = isMobile ? 70 : 120; // 70 segments vs 120 on desktop
-        const MAX_TREES = isMobile ? 3000 : 10000; // Cap trees on mobile
-        
-        if(isMobile) {
-            console.log("Mobile device detected. Optimizing geometry settings.");
-        }
 
         // --- RNG SYSTEM ---
         function cyrb128(str) {
@@ -313,7 +319,7 @@
 
         let rng = mulberry32(0);
         let currentSeed = "Cosmos";
-        let importedHeightMapBase64 = null; 
+        let importedHeightMapBase64 = null; // Store image data for ZIP export
 
         // --- SETUP ---
         const scene = new THREE.Scene();
@@ -322,26 +328,31 @@
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
         camera.position.set(0, 0, 3.8);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, alpha: false, powerPreference: "high-performance" }); 
+        const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false }); 
         renderer.setSize(window.innerWidth, window.innerHeight);
-        // Cap pixel ratio at 1.5 for mobile to save battery/gpu
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         document.getElementById('container').appendChild(renderer.domElement);
 
+        // ===== MOBILE TOUCH SUPPORT =====
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
-        controls.enablePan = false; // Disable pan on mobile to avoid confusion
+        controls.enableZoom = true; // Explicitly enable for mobile
+        controls.enablePan = false; // Disable to avoid conflicts
+        
+        // Prevent default touch behaviors on canvas
+        renderer.domElement.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+        renderer.domElement.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+        // =================================
 
         // Post Processing Setup
         const renderScene = new RenderPass(scene, camera);
         
-        // Reduce bloom resolution slightly on mobile
-        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth/(isMobile?2:1), window.innerHeight/(isMobile?2:1)), 1.5, 0.4, 0.85);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
         bloomPass.threshold = 0.5; 
-        bloomPass.strength = 0; 
+        bloomPass.strength = 0; // Disabled by default (Planet Mode)
         bloomPass.radius = 0.5;
 
         const composer = new EffectComposer(renderer);
@@ -570,9 +581,6 @@
                 isSun: { value: 0.0 }
             },
             vertexShader: `
-                // Mobile Optimization: Ensure precision
-                precision mediump float;
-                
                 uniform float radius;
                 uniform float heightScale;
                 uniform float frequency;
@@ -614,7 +622,6 @@
                     
                     if (isSun > 0.5) noisePos += vec3(time * 0.2, -time*0.1, time*0.1);
 
-                    // Reduce loops in shader if performance is hit, but vertex shader usually ok
                     float n = fbm(noisePos, octaves, persistence, 2.0);
                     float r = 1.0 - abs(snoise(noisePos));
                     r = pow(r, 3.0); 
@@ -635,8 +642,6 @@
                 }
             `,
             fragmentShader: `
-                precision mediump float;
-                
                 uniform float oceanLevel;
                 uniform float snowLevel;
                 uniform float moistureOffset;
@@ -760,12 +765,11 @@
             let geo;
             let shapeVal = 0.0;
 
-            // Use the GEOMETRY_SEGMENTS constant determined by mobile/desktop check
             if (geometryMode === 'cube') {
-                geo = new THREE.BoxGeometry(1, 1, 1, GEOMETRY_SEGMENTS, GEOMETRY_SEGMENTS, GEOMETRY_SEGMENTS);
+                geo = new THREE.BoxGeometry(1, 1, 1, 120, 120, 120);
                 shapeVal = 0.7;
             } else {
-                geo = new THREE.BoxGeometry(1, 1, 1, GEOMETRY_SEGMENTS, GEOMETRY_SEGMENTS, GEOMETRY_SEGMENTS);
+                geo = new THREE.BoxGeometry(1, 1, 1, 120, 120, 120);
                 shapeVal = 0.0;
             }
 
@@ -777,7 +781,7 @@
         }
 
         // --- TREES (INSTANCING) ---
-        // Using MAX_TREES determined at start
+        const MAX_TREES = 10000;
         const trunkGeometry = new THREE.CylinderGeometry(0.03, 0.04, 0.4, 6);
         const foliageSphereGeometry = new THREE.IcosahedronGeometry(0.12, 1);
         const foliageConeGeometry = new THREE.ConeGeometry(0.1, 0.18, 8);
@@ -880,8 +884,7 @@
             const sliderValue = parseInt($('treeDensity').value);
             if (sliderValue === 0) return;
             
-            // Adjust calculations for reduced MAX_TREES
-            const actualTreeCount = Math.min(MAX_TREES, Math.floor(Math.pow(sliderValue / 100, 2.5) * (MAX_TREES * 0.8)));
+            const actualTreeCount = Math.min(MAX_TREES, Math.floor(Math.pow(sliderValue / 100, 2.5) * 8000));
             const treeSize = parseFloat($('treeSize').value);
             const planetRadius = parseFloat($('radius').value);
             const oceanLevel = material.uniforms.oceanLevel.value;
