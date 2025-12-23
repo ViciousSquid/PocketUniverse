@@ -1,10 +1,10 @@
 # Pocket Universe
 
-#### PlanetEditor.html 
-creates planets - creates **ZIP files** with the prefix `sun_*` , `planet_*` or `moon_*`
+**PlanetEditor.html** creates planets - creates `sun_*` , `planet_*` and `moon_*` **ZIP files**
 
-#### SolarSystemEditor.html
-create a solar system by importing the `sun_*` , `planet_*` and `moon_*` files created by the PlanetEditor
+**SolarSystemEditor.html** Imports the `sun_*` , `planet_*` and `moon_*` files, Exports `solarsystem_*` ZIP file
+
+**GalaxyEditor.html** Imports `solarsystem_*` zip files 
 
 #### example planets, moons and suns can be found in the `planets` folder
 
