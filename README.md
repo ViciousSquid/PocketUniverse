@@ -1,5 +1,7 @@
 # Pocket Universe
 
+
+
 1. **PlanetEditor.html**  - creates `sun_*` , `planet_*` and `moon_*` **ZIP files**
 
 2. **SolarSystemEditor.html** - Imports the `sun_*` , `planet_*` and `moon_*` files, Exports `solarsystem_*` ZIP file
@@ -18,6 +20,8 @@
 * Planet Editor
 
 <img width="2135" height="1340" alt="image" src="https://github.com/user-attachments/assets/accfa8f9-ce17-450c-9acc-bad6f82aa424" />
+
+-----------------
 
 * Solar System Editor
 
