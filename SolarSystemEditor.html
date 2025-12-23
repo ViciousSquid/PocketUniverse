@@ -119,7 +119,8 @@
             </div>
             <div class="panel-content">
                 <button id="btnImport" class="action-btn">➕ Import Body (ZIP)</button>
-                <button id="btnExportSystem" class="action-btn" style="background:#264; border-color:#3a6; margin-top:5px;">💾 Export Solar System</button>
+                <button id="btnRandomSystem" class="action-btn" style="background: #442; border-color: #664; margin-top: 5px;">🎲 Generate Random System</button>
+                <button id="btnExportSystem" class="action-btn" style="background: #264; border-color: #3a6; margin-top: 5px;">💾 Export Solar System</button>
                 <input type="file" id="fileInput" accept=".zip">
                 <div id="bodyList" class="body-list">
                     </div>
@@ -415,11 +416,12 @@
 
         // --- CELESTIAL BODY CLASS ---
         class CelestialBody {
-            constructor(data, texture, id) {
+            constructor(data, texture, id, heightmapBase64 = null) {
                 this.id = id;
                 this.data = data;
                 this.type = data.type || 'planet';
                 this.name = `${this.type}_${data.seed}`;
+                this.heightmapBase64 = heightmapBase64; // Store for export
                 
                 // HIERARCHY TRACKING
                 this.parentBody = null; // null means scene/center
@@ -539,6 +541,123 @@
 
         $('btnImport').onclick = () => $('fileInput').click();
 
+        // --- RANDOM GENERATION (matching PlanetEditor logic) ---
+        function generateRandomName() {
+            const prefixes = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Theta', 'Nova', 'Sol', 'Vega', 'Rigel', 'Sirius', 'Altair', 'Deneb', 'Polaris', 'Antares', 'Proxima', 'Kepler', 'Trappist', 'Gliese'];
+            const suffixes = ['Prime', 'Major', 'Minor', 'X', 'IX', 'VII', 'III', 'IV', 'V', 'VI', 'A', 'B', 'C'];
+            const numbers = ['', '-1', '-2', '-3', '-4', '-5', ' 47', ' 51', ' 186', ' 442'];
+            return prefixes[Math.floor(Math.random() * prefixes.length)] + 
+                   (Math.random() > 0.5 ? ' ' + suffixes[Math.floor(Math.random() * suffixes.length)] : '') +
+                   numbers[Math.floor(Math.random() * numbers.length)];
+        }
+
+        function generateRandomBodyData(type, rng) {
+            const seed = generateRandomName();
+            
+            // Base parameters (from PlanetEditor defaults)
+            let params = {
+                radius: type === 'sun' ? (1.2 + rng() * 0.8).toFixed(2) : 
+                        type === 'moon' ? (0.3 + rng() * 0.3).toFixed(2) : 
+                        (0.5 + rng() * 0.8).toFixed(2),
+                warpScale: (rng() * 0.16).toFixed(2),
+                heightScale: type === 'sun' ? '0.030' : (0.04 + rng() * 0.08).toFixed(3),
+                frequency: (0.5 + rng() * 2.0).toFixed(2),
+                octaves: Math.floor(3 + rng() * 4).toString(),
+                persistence: (0.1 + rng() * 0.3).toFixed(2),
+                ridge: (rng() * 0.3).toFixed(2),
+                oceanLevel: type === 'sun' ? '-1.0' : 
+                           type === 'moon' ? '-1.0' : 
+                           (0.1 - rng() * 1.5).toFixed(2),
+                snowLevel: (0.45 + rng() * 0.3).toFixed(2),
+                moistureOffset: ((rng() - 0.5) * 0.6).toFixed(2),
+                texMix: '0',
+                waterNoise: type === 'planet',
+                enableTrees: type === 'planet' && rng() > 0.3,
+                treeDensity: type === 'planet' ? Math.floor(rng() * 60).toString() : '0',
+                treeSize: '1.0'
+            };
+            
+            // Generate colors based on type (from PlanetEditor randomizeBiomeColors)
+            let colors;
+            if (type === 'sun') {
+                colors = {
+                    ocean: '#ffaa00',
+                    beach: '#ff8800',
+                    grass: '#ff4400',
+                    rock: '#aa2200',
+                    snow: '#ffffaa'
+                };
+            } else if (type === 'moon') {
+                colors = {
+                    ocean: '#000000',
+                    beach: '#' + new THREE.Color().setHSL(0, 0, 0.2 + rng() * 0.2).getHexString(),
+                    grass: '#' + new THREE.Color().setHSL(0, 0, 0.3 + rng() * 0.2).getHexString(),
+                    rock: '#' + new THREE.Color().setHSL(0, 0, 0.5 + rng() * 0.3).getHexString(),
+                    snow: '#ffffff'
+                };
+            } else {
+                const oceanH = 180 + rng() * 60;
+                const beachH = 30 + rng() * 30;
+                const grassH = rng() * 360;
+                const rockH = rng() < 0.5 ? 30 + rng() * 20 : 0;
+                colors = {
+                    ocean: '#' + new THREE.Color().setHSL(oceanH / 360, 0.3 + rng() * 0.4, 0.65 + rng() * 0.2).getHexString(),
+                    beach: '#' + new THREE.Color().setHSL(beachH / 360, 0.4 + rng() * 0.3, 0.75 + rng() * 0.15).getHexString(),
+                    grass: '#' + new THREE.Color().setHSL(grassH / 360, 0.4 + rng() * 0.4, 0.3 + rng() * 0.3).getHexString(),
+                    rock: '#' + new THREE.Color().setHSL(rockH / 360, 0.1 + rng() * 0.2, 0.4 + rng() * 0.2).getHexString(),
+                    snow: '#' + new THREE.Color().setHSL(0, 0, 0.9 + rng() * 0.1).getHexString()
+                };
+            }
+            
+            return {
+                seed: seed,
+                type: type,
+                mode: 'quad',
+                hasHeightMap: false,
+                params: params,
+                colors: colors
+            };
+        }
+
+        function generateRandomSolarSystem() {
+            // Clear existing bodies
+            while (bodies.length > 0) {
+                const body = bodies.pop();
+                body.pivot.removeFromParent();
+                body.orbitRing.removeFromParent();
+            }
+            selectedBody = null;
+            $('detailPanel').style.display = 'none';
+            
+            const masterSeed = Date.now();
+            const seedHash = cyrb128(masterSeed.toString());
+            const rng = mulberry32(seedHash[0]);
+            
+            // Generate sun
+            const sunData = generateRandomBodyData('sun', rng);
+            addBody(sunData, null);
+            
+            // Generate 2-6 planets
+            const numPlanets = 2 + Math.floor(rng() * 5);
+            for (let i = 0; i < numPlanets; i++) {
+                const planetData = generateRandomBodyData('planet', rng);
+                addBody(planetData, null);
+                
+                // 40% chance of having 1-3 moons
+                if (rng() > 0.6) {
+                    const numMoons = 1 + Math.floor(rng() * 3);
+                    for (let j = 0; j < numMoons; j++) {
+                        const moonData = generateRandomBodyData('moon', rng);
+                        addBody(moonData, null);
+                    }
+                }
+            }
+            
+            renderHierarchy();
+        }
+
+        $('btnRandomSystem').onclick = generateRandomSolarSystem;
+
         $('fileInput').onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -549,26 +668,27 @@
                 const data = JSON.parse(jsonStr);
 
                 let texture = null;
+                let heightmapBase64 = null;
                 const imgFile = zip.file("heightmap.png");
                 if (imgFile) {
-                    const b64 = await imgFile.async("base64");
-                    texture = new THREE.TextureLoader().load("data:image/png;base64," + b64);
+                    heightmapBase64 = await imgFile.async("base64");
+                    texture = new THREE.TextureLoader().load("data:image/png;base64," + heightmapBase64);
                 }
 
-                addBody(data, texture);
+                addBody(data, texture, heightmapBase64);
             } catch (err) {
                 alert("Error loading ZIP: " + err);
             }
             $('fileInput').value = ""; 
         };
 
-        function addBody(data, texture) {
+        function addBody(data, texture, heightmapBase64 = null) {
             // Hide welcome screen on first import
             if (bodies.length === 0) {
                 welcomeEl.classList.add('hidden');
             }
 
-            const body = new CelestialBody(data, texture, bodyCounter++);
+            const body = new CelestialBody(data, texture, bodyCounter++, heightmapBase64);
             bodies.push(body);
 
             if (data.type === 'sun') {
@@ -726,52 +846,61 @@
         // --- EXPORT SOLAR SYSTEM ---
         $('btnExportSystem').onclick = async () => {
             if (bodies.length === 0) {
-                alert('No bodies to export! Import some planets first.');
+                alert("No bodies to export! Import some planets first.");
                 return;
             }
 
-            const zip = new JSZip();
+            const masterZip = new JSZip();
             
-            // Find the sun to name the system
+            // Find the system name from the sun, or first body
             const sun = bodies.find(b => b.type === 'sun');
-            const systemName = sun ? sun.data.seed : 'Unknown';
+            const systemName = sun ? sun.data.seed : (bodies[0]?.data.seed || 'System');
             
-            // Build hierarchy data
-            function buildHierarchy(body) {
-                return {
-                    file: `${body.type}_${body.data.seed}.zip`,
-                    orbitDistance: body.orbitDistance,
-                    orbitSpeed: body.orbitSpeed,
-                    children: body.childrenBodies.map(child => buildHierarchy(child))
-                };
-            }
-            
-            const rootBodies = bodies.filter(b => b.parentBody === null);
-            
-            const systemData = {
+            // Build the manifest with body references and orbital data
+            const manifest = {
                 name: systemName + ' System',
-                version: '1.0',
-                bodies: rootBodies.map(b => buildHierarchy(b))
+                distanceFromCore: 100,  // Default galactic position
+                angle: 0,
+                spiralArm: -1,
+                bodies: []
             };
             
-            zip.file("system_data.json", JSON.stringify(systemData, null, 2));
-            
-            // Add each body as a nested ZIP
+            // Process all bodies and create nested zips
             for (const body of bodies) {
+                const bodyFilename = `${body.type}_${body.data.seed}.zip`;
+                
+                // Create a zip for this body
                 const bodyZip = new JSZip();
                 bodyZip.file("planet_data.json", JSON.stringify(body.data, null, 2));
                 
-                // Note: heightmap textures would need to be stored separately
-                // For now we just include the JSON data
+                // Include heightmap if it exists
+                if (body.heightmapBase64) {
+                    bodyZip.file("heightmap.png", body.heightmapBase64, {base64: true});
+                }
                 
-                const bodyBlob = await bodyZip.generateAsync({ type: "blob" });
-                zip.file(`${body.type}_${body.data.seed}.zip`, bodyBlob);
+                // Generate the body zip and add to master zip
+                const bodyBlob = await bodyZip.generateAsync({type: "blob"});
+                masterZip.file(bodyFilename, bodyBlob);
+                
+                // Add to manifest with orbital data
+                manifest.bodies.push({
+                    file: bodyFilename,
+                    type: body.type,
+                    seed: body.data.seed,
+                    orbitDistance: body.orbitDistance,
+                    orbitSpeed: body.orbitSpeed,
+                    parentId: body.parentBody ? body.parentBody.id : null
+                });
             }
             
-            const blob = await zip.generateAsync({ type: "blob" });
+            // Add manifest to master zip
+            masterZip.file("system_data.json", JSON.stringify(manifest, null, 2));
+            
+            // Generate and download
+            const blob = await masterZip.generateAsync({type: "blob"});
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `solarsystem_${systemName}.zip`;
+            link.download = `solarsystem_${systemName.replace(/\s+/g, '_')}.zip`;
             link.click();
         };
 

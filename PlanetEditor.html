@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Planet Editor v1.1</title>
+    <title>Planet Editor v1.2</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root { --accent: #00ff88; --bg: #0a0a10; --panel: rgba(10, 10, 12, 0.95); }
@@ -927,27 +927,36 @@
         // Handle Planet Types
         $('planetType').addEventListener('change', (e) => {
             const type = e.target.value;
+            const radiusSlider = $('radius');
             
             if (type === 'moon') {
+                radiusSlider.max = "2.0";
+                if(parseFloat(radiusSlider.value) > 2.0) radiusSlider.value = "2.0";
+
                 $('enableTrees').checked = false;
                 $('oceanLevel').value = -0.95; 
-                $('radius').value = 0.50; // Moon Radius
+                radiusSlider.value = 0.50; // Moon Radius
                 material.uniforms.isSun.value = 0.0;
                 lensflare.visible = false;
                 bloomPass.strength = 0.0; // Disable Glow
                 randomizeBiomeColors();
             } else if (type === 'sun') {
+                radiusSlider.max = "4.0"; // Allow bigger radius for Sun
+
                 $('enableTrees').checked = false;
                 $('oceanLevel').value = -1.0; 
-                $('radius').value = 1.00; // Reset Radius
+                radiusSlider.value = 1.00; // Reset Radius
                 material.uniforms.isSun.value = 1.0;
                 lensflare.visible = true;
                 bloomPass.strength = 1.2; // Enable Glow
                 randomizeBiomeColors(); 
             } else {
                 // Planet
+                radiusSlider.max = "2.0";
+                if(parseFloat(radiusSlider.value) > 2.0) radiusSlider.value = "2.0";
+
                 material.uniforms.isSun.value = 0.0;
-                $('radius').value = 1.00; // Reset Radius
+                radiusSlider.value = 1.00; // Reset Radius
                 lensflare.visible = false;
                 bloomPass.strength = 0.0; // Disable Glow
             }
@@ -975,6 +984,17 @@
         function updateUni() {
             const m = material.uniforms;
             const newRadius = parseFloat($('radius').value);
+
+            // --- AUTO ZOOM LOGIC ---
+            // Ensure camera doesn't get swallowed by the growing planet
+            // 3.8 is the initial distance ratio (3.8 dist for 1.0 radius)
+            const minCameraDist = newRadius * 3.8; 
+            if (camera.position.length() < minCameraDist) {
+                // Push camera out along its current view vector
+                camera.position.setLength(minCameraDist);
+                controls.update(); // Update orbit controls state
+            }
+            // -----------------------
 
             m.radius.value = newRadius;
             m.warpScale.value = parseFloat($('warpScale').value);

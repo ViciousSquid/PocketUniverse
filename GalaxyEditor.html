@@ -185,6 +185,7 @@
                 <h3>Import</h3>
                 <button id="btnImportSystem" class="action-btn">📦 Import Solar System</button>
                 <button id="btnImportBodies" class="action-btn secondary">⭐ Import Bodies (Build System)</button>
+                <button id="btnRandomSystem" class="action-btn" style="background: #442; border-color: #664;">🎲 Generate Random System</button>
                 <input type="file" id="fileInputSystem" accept=".zip" multiple>
                 <input type="file" id="fileInputBodies" accept=".zip" multiple>
                 
@@ -857,6 +858,123 @@
         // --- IMPORT HANDLERS ---
         $('btnImportSystem').onclick = () => $('fileInputSystem').click();
         $('btnImportBodies').onclick = () => $('fileInputBodies').click();
+
+        // --- RANDOM GENERATION (matching PlanetEditor logic) ---
+        function generateRandomName() {
+            const prefixes = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Theta', 'Nova', 'Sol', 'Vega', 'Rigel', 'Sirius', 'Altair', 'Deneb', 'Polaris', 'Antares', 'Proxima', 'Kepler', 'Trappist', 'Gliese'];
+            const suffixes = ['Prime', 'Major', 'Minor', 'X', 'IX', 'VII', 'III', 'IV', 'V', 'VI', 'A', 'B', 'C'];
+            const numbers = ['', '-1', '-2', '-3', '-4', '-5', ' 47', ' 51', ' 186', ' 442'];
+            return prefixes[Math.floor(Math.random() * prefixes.length)] + 
+                   (Math.random() > 0.5 ? ' ' + suffixes[Math.floor(Math.random() * suffixes.length)] : '') +
+                   numbers[Math.floor(Math.random() * numbers.length)];
+        }
+
+        function generateRandomBodyData(type, rng) {
+            const seed = generateRandomName();
+            
+            // Base parameters (from PlanetEditor defaults)
+            let params = {
+                radius: type === 'sun' ? (1.2 + rng() * 0.8).toFixed(2) : 
+                        type === 'moon' ? (0.3 + rng() * 0.3).toFixed(2) : 
+                        (0.5 + rng() * 0.8).toFixed(2),
+                warpScale: (rng() * 0.16).toFixed(2),
+                heightScale: type === 'sun' ? '0.030' : (0.04 + rng() * 0.08).toFixed(3),
+                frequency: (0.5 + rng() * 2.0).toFixed(2),
+                octaves: Math.floor(3 + rng() * 4).toString(),
+                persistence: (0.1 + rng() * 0.3).toFixed(2),
+                ridge: (rng() * 0.3).toFixed(2),
+                oceanLevel: type === 'sun' ? '-1.0' : 
+                           type === 'moon' ? '-1.0' : 
+                           (0.1 - rng() * 1.5).toFixed(2),
+                snowLevel: (0.45 + rng() * 0.3).toFixed(2),
+                moistureOffset: ((rng() - 0.5) * 0.6).toFixed(2),
+                texMix: '0',
+                waterNoise: type === 'planet',
+                enableTrees: type === 'planet' && rng() > 0.3,
+                treeDensity: type === 'planet' ? Math.floor(rng() * 60).toString() : '0',
+                treeSize: '1.0'
+            };
+            
+            // Generate colors based on type (from PlanetEditor randomizeBiomeColors)
+            let colors;
+            if (type === 'sun') {
+                colors = {
+                    ocean: '#ffaa00',
+                    beach: '#ff8800',
+                    grass: '#ff4400',
+                    rock: '#aa2200',
+                    snow: '#ffffaa'
+                };
+            } else if (type === 'moon') {
+                colors = {
+                    ocean: '#000000',
+                    beach: '#' + new THREE.Color().setHSL(0, 0, 0.2 + rng() * 0.2).getHexString(),
+                    grass: '#' + new THREE.Color().setHSL(0, 0, 0.3 + rng() * 0.2).getHexString(),
+                    rock: '#' + new THREE.Color().setHSL(0, 0, 0.5 + rng() * 0.3).getHexString(),
+                    snow: '#ffffff'
+                };
+            } else {
+                const oceanH = 180 + rng() * 60;
+                const beachH = 30 + rng() * 30;
+                const grassH = rng() * 360;
+                const rockH = rng() < 0.5 ? 30 + rng() * 20 : 0;
+                colors = {
+                    ocean: '#' + new THREE.Color().setHSL(oceanH / 360, 0.3 + rng() * 0.4, 0.65 + rng() * 0.2).getHexString(),
+                    beach: '#' + new THREE.Color().setHSL(beachH / 360, 0.4 + rng() * 0.3, 0.75 + rng() * 0.15).getHexString(),
+                    grass: '#' + new THREE.Color().setHSL(grassH / 360, 0.4 + rng() * 0.4, 0.3 + rng() * 0.3).getHexString(),
+                    rock: '#' + new THREE.Color().setHSL(rockH / 360, 0.1 + rng() * 0.2, 0.4 + rng() * 0.2).getHexString(),
+                    snow: '#' + new THREE.Color().setHSL(0, 0, 0.9 + rng() * 0.1).getHexString()
+                };
+            }
+            
+            return {
+                seed: seed,
+                type: type,
+                mode: 'quad',
+                hasHeightMap: false,
+                params: params,
+                colors: colors
+            };
+        }
+
+        function generateRandomSolarSystem() {
+            const masterSeed = Date.now();
+            const seedHash = cyrb128(masterSeed.toString());
+            const rng = mulberry32(seedHash[0]);
+            
+            // Create new solar system
+            const system = new SolarSystem(systemCounter++, 'New System');
+            
+            // Generate sun
+            const sunData = generateRandomBodyData('sun', rng);
+            system.addBody(sunData, null);
+            
+            // Generate 2-6 planets
+            const numPlanets = 2 + Math.floor(rng() * 5);
+            for (let i = 0; i < numPlanets; i++) {
+                const planetData = generateRandomBodyData('planet', rng);
+                system.addBody(planetData, null);
+                
+                // 40% chance of having 1-3 moons
+                if (rng() > 0.6) {
+                    const numMoons = 1 + Math.floor(rng() * 3);
+                    for (let j = 0; j < numMoons; j++) {
+                        const moonData = generateRandomBodyData('moon', rng);
+                        system.addBody(moonData, null);
+                    }
+                }
+            }
+            
+            if (detailViewEnabled) {
+                system.setDetailMode(true, systemScale);
+            }
+            
+            solarSystems.push(system);
+            updateUI();
+            selectSystem(system);
+        }
+
+        $('btnRandomSystem').onclick = generateRandomSolarSystem;
 
         $('fileInputSystem').onchange = async (e) => {
             const files = Array.from(e.target.files);
