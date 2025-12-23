@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Planet Editor v1.1 (Mobile)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        :root { --accent: #00ff88; --bg: #0a0a10; --panel: rgba(10, 10, 12, 0.95); }
+        body { margin: 0; overflow: hidden; background: #000; color: #e0e0e0; font-family: 'Segoe UI', Roboto, sans-serif; font-size: 13px; touch-action: none; }
+        
+        #container { position: absolute; top: 0; left: 0; width: 100%; height: 100dvh; z-index: 0; }
+        
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
+            display: flex; justify-content: space-between; padding: 20px; box-sizing: border-box;
+            flex-wrap: wrap; /* Allow wrapping on mobile */
+            overflow: hidden;
+        }
+        
+        .panel {
+            pointer-events: auto; background: var(--panel); backdrop-filter: blur(12px);
+            padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);
+            display: flex; flex-direction: column; gap: 12px;
+            max-height: 85vh; overflow-y: auto;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.8);
+            transition: max-height 0.3s, width 0.3s;
+            /* Scrollbar styling for firefox mobile */
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent) #222;
+        }
+        
+        .panel.collapsed { 
+            max-height: 50px; /* Force height on collapse */
+            overflow: hidden; 
+            width: auto !important; 
+        }
+        .panel.collapsed .panel-content { display: none; }
+        
+        .panel-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; min-height: 24px; }
+        .panel-header:hover h2 { text-shadow: 0 0 8px var(--accent); }
+        
+        /* Larger touch targets for mobile */
+        .collapse-btn {
+            background: none; border: 1px solid #444; color: #888; width: 32px; height: 32px;
+            border-radius: 4px; cursor: pointer; font-size: 12px; display: flex; align-items: center;
+            justify-content: center; transition: all 0.2s; flex-shrink: 0;
+        }
+        .collapse-btn:hover { background: #333; color: #fff; border-color: #666; }
+        .panel.collapsed .collapse-btn { transform: rotate(180deg); }
+        
+        #controls-left { width: 280px; }
+        #controls-right { width: 260px; }
+
+        /* Mobile Responsive CSS */
+        @media (max-width: 768px) {
+            #ui-layer { padding: 10px; flex-direction: column; justify-content: flex-start; gap: 10px; }
+            #controls-left, #controls-right { width: 100%; max-height: 40vh; }
+            
+            /* Hide the second panel initially on mobile to save space, or stack them */
+            #controls-right { margin-top: auto; } 
+            
+            /* Make sliders easier to touch */
+            input[type=range] { height: 12px; }
+            input[type=range]::-webkit-slider-thumb { width: 20px; height: 20px; }
+        }
+
+        h2 { margin: 0; font-size: 14px; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; font-weight: 800; }
+        h3 { margin: 10px 0 2px 0; font-size: 11px; color: #777; font-weight: 700; text-transform: uppercase; border-bottom: 1px solid #333; padding-bottom: 4px; }
+        
+        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+        label { color: #bbb; font-weight: 500; }
+        .val { font-family: 'Consolas', monospace; color: var(--accent); font-size: 11px; }
+
+        input[type=range] { width: 100%; margin: 6px 0; cursor: pointer; accent-color: var(--accent); height: 4px; background: #333; appearance: none; border-radius: 2px; }
+        input[type=range]::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; background: #ddd; border-radius: 50%; cursor: pointer; transition: background 0.2s; }
+        input[type=range]::-webkit-slider-thumb:hover { background: var(--accent); }
+
+        input[type=text] { 
+            background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 8px; border-radius: 4px; width: 100%; box-sizing: border-box; text-align: center; font-weight: bold; letter-spacing: 1px;
+        }
+        
+        select {
+            background: #1a1a1a; color: #fff; border: 1px solid #333; padding: 6px; border-radius: 4px; width: 100%;
+            font-family: 'Segoe UI', sans-serif; font-size: 12px; font-weight: bold; cursor: pointer;
+            margin-top: 8px; outline: none;
+        }
+        select:focus { border-color: var(--accent); }
+
+        input[type=file] { display: none; }
+        input[type=color] { width: 100%; height: 40px; border: none; border-radius: 4px; cursor: pointer; }
+
+        input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+        .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+        .checkbox-row label { cursor: pointer; }
+
+        .btn-group { display: flex; gap: 4px; margin-top: 5px; }
+        button {
+            flex: 1; padding: 10px; background: #222; color: #aaa; border: 1px solid #333; border-radius: 4px; 
+            cursor: pointer; transition: all 0.2s; font-size: 10px; font-weight: bold; text-transform: uppercase;
+            touch-action: manipulation;
+        }
+        button:hover { background: #333; color: #fff; }
+        button.active-geo { background: var(--accent); color: #000; border-color: var(--accent); }
+        
+        .seed-container { 
+            display: flex; gap: 5px; margin-bottom: 10px;
+            border: 2px solid #FFD700; border-radius: 6px; padding: 8px;
+            background-color: rgba(255, 215, 0, 0.1); box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+        #seedInput { font-family: monospace; }
+        
+        canvas#exportCanvas { display: none; }
+        
+        .color-row { display: flex; align-items: center; gap: 8px; }
+        .color-row label { flex: 1; }
+        
+        #center-info {
+            pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 20px;
+            position: absolute; bottom: 0; width: 100%; z-index: 5;
+        }
+        
+        #fps-counter {
+            pointer-events: auto; background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 4px;
+            font-family: monospace; font-size: 12px; color: var(--accent);
+        }
+    </style>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.168.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.168.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="container"></div>
+
+    <div id="ui-layer">
+        <div id="controls-left" class="panel">
+            <div class="panel-header" onclick="togglePanel('controls-left')">
+                <h2>Design</h2>
+                <button class="collapse-btn">▼</button>
+            </div>
+            
+            <div class="panel-content">
+                <select id="planetType">
+                    <option value="planet">Type: Planet</option>
+                    <option value="moon">Type: Moon</option>
+                    <option value="sun">Type: Sun</option>
+                </select>
+
+                <h3>Name</h3>
+                <div class="seed-container">
+                    <input type="text" id="seedInput" value="Cosmos" placeholder="Seed">
+                    <button id="randomSeed" style="max-width: 40px;">🎲</button>
+                </div>
+                
+                <div class="btn-group">
+                    <button id="typeQuad" class="active-geo">Sphere</button>
+                    <button id="typeCube">Cube</button>
+                </div>
+
+                <h3>Terrain Shape</h3>
+                <div class="row"><label>Radius</label><span id="radVal" class="val">1.00</span></div>
+                <input type="range" id="radius" min="0.3" max="2.0" step="0.01" value="1.00">
+
+                <div class="row"><label>Warp</label><span id="warpVal" class="val">0.00</span></div>
+                <input type="range" id="warpScale" min="0" max="1.0" step="0.01" value="0.00">
+
+                <div class="row"><label>Height</label><span id="heightVal" class="val">0.062</span></div>
+                <input type="range" id="heightScale" min="0" max="0.5" step="0.001" value="0.062">
+
+                <h3>Noise Generator</h3>
+                <div class="row"><label>Scale</label><span id="freqVal" class="val">0.65</span></div>
+                <input type="range" id="frequency" min="0.5" max="8.0" step="0.01" value="0.65">
+
+                <div class="row"><label>Detail</label><span id="octVal" class="val">5</span></div>
+                <input type="range" id="octaves" min="1" max="10" step="1" value="5">
+
+                <div class="row"><label>Roughness</label><span id="persVal" class="val">0.18</span></div>
+                <input type="range" id="persistence" min="0" max="0.8" step="0.01" value="0.18">
+                
+                <div class="row"><label>Ridges</label><span id="ridgeVal" class="val">0.05</span></div>
+                <input type="range" id="ridge" min="0" max="1.0" step="0.01" value="0.05">
+
+                <h3>Heightmap</h3>
+                <div class="btn-group">
+                    <button id="btnImportHM">Import</button>
+                    <button id="btnExportHM" style="opacity: 0.5; cursor: not-allowed;">Export</button>
+                </div>
+                <input type="file" id="fileInputHM" accept="image/*">
+                <div class="row" style="margin-top:5px; opacity:0.6;"><label>Height Mix</label></div>
+                <input type="range" id="texMix" min="0" max="1" step="0.01" value="0">
+            </div>
+        </div>
+
+        <div id="controls-right" class="panel">
+            <div class="panel-header" onclick="togglePanel('controls-right')">
+                <h2>Biomes</h2>
+                <button class="collapse-btn">▼</button>
+            </div>
+            
+            <div class="panel-content">
+                <h3>Surface Colors</h3>
+                <div class="color-row"><label>Ocean</label><input type="color" id="colorOcean" value="#87ceeb"></div>
+                <div class="checkbox-row">
+                    <input type="checkbox" id="waterNoise" checked>
+                    <label for="waterNoise">Water Noise</label>
+                </div>
+                <div class="color-row"><label>Beach / Sand</label><input type="color" id="colorBeach" value="#ffd4a3"></div>
+                <div class="color-row"><label>Grass</label><input type="color" id="colorGrass" value="#1a8c1a"></div>
+                <div class="color-row"><label>Rock</label><input type="color" id="colorRock" value="#555555"></div>
+                <div class="color-row"><label>Snow</label><input type="color" id="colorSnow" value="#ffffff"></div>
+
+                <h3>Surface Levels</h3>
+                <div class="row"><label>Sea Level</label><span id="oceanVal" class="val">-0.79</span></div>
+                <input type="range" id="oceanLevel" min="-1.0" max="0.6" step="0.001" value="-0.79">
+
+                <div class="row"><label>Snow Line</label><span id="snowVal" class="val">0.60</span></div>
+                <input type="range" id="snowLevel" min="0.0" max="1.2" step="0.01" value="0.60">
+
+                <div class="row"><label>Vegetation</label><span id="moistVal" class="val">0.0</span></div>
+                <input type="range" id="moistureOffset" min="-1.0" max="1.0" step="0.01" value="0.0">
+
+                <h3>🌲 Vegetation</h3>
+                <div class="checkbox-row">
+                    <input type="checkbox" id="enableTrees" checked>
+                    <label for="enableTrees">Enable Trees</label>
+                </div>
+                <div class="row"><label>Density</label><span id="treeDensVal" class="val">50</span></div>
+                <input type="range" id="treeDensity" min="0" max="100" step="1" value="50">
+                
+                <div class="row"><label>Size</label><span id="treeSizeVal" class="val">1.0</span></div>
+                <input type="range" id="treeSize" min="0.3" max="3.0" step="0.1" value="1.0">
+
+                <button id="btnRegenerateTrees">♻ Regenerate Trees</button>
+
+                <h3>System</h3>
+                <div class="btn-group">
+                    <button id="btnSaveData">Export ZIP</button>
+                    <button id="btnLoadData">Import ZIP</button>
+                </div>
+                <input type="file" id="fileInputData" accept=".zip,.json,.planet">
+            </div>
+        </div>
+    </div>
+    
+    <div id="center-info">
+        <div id="fps-counter">FPS: --</div>
+    </div>
+
+    <canvas id="exportCanvas" width="2048" height="1024"></canvas>
+
+    <script>
+        function togglePanel(panelId) {
+            const panel = document.getElementById(panelId);
+            panel.classList.toggle('collapsed');
+        }
+        
+        // Mobile: Auto collapse right panel on load
+        if(window.innerWidth < 768) {
+            document.getElementById('controls-right').classList.add('collapsed');
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
+
+        // --- MOBILE DETECTION ---
+        // We reduce geometry complexity if on mobile to maintain FPS
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 800;
+        
+        const GEOMETRY_SEGMENTS = isMobile ? 70 : 120; // 70 segments vs 120 on desktop
+        const MAX_TREES = isMobile ? 3000 : 10000; // Cap trees on mobile
+        
+        if(isMobile) {
+            console.log("Mobile device detected. Optimizing geometry settings.");
+        }
+
+        // --- RNG SYSTEM ---
+        function cyrb128(str) {
+            let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
+            for (let i = 0, k; i < str.length; i++) {
+                k = str.charCodeAt(i);
+                h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+                h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+                h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+                h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
+            }
+            h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+            h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+            h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+            h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+            return [(h1^h2^h3^h4)>>>0, (h2^h1)>>>0, (h3^h1)>>>0, (h4^h1)>>>0];
+        }
+        function mulberry32(a) {
+            return function() {
+                var t = a += 0x6D2B79F5;
+                t = Math.imul(t ^ (t >>> 15), t | 1);
+                t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            }
+        }
+
+        let rng = mulberry32(0);
+        let currentSeed = "Cosmos";
+        let importedHeightMapBase64 = null; 
+
+        // --- SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050508);
+        
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 0, 3.8);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: !isMobile, alpha: false, powerPreference: "high-performance" }); 
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        // Cap pixel ratio at 1.5 for mobile to save battery/gpu
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        document.getElementById('container').appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.enablePan = false; // Disable pan on mobile to avoid confusion
+
+        // Post Processing Setup
+        const renderScene = new RenderPass(scene, camera);
+        
+        // Reduce bloom resolution slightly on mobile
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth/(isMobile?2:1), window.innerHeight/(isMobile?2:1)), 1.5, 0.4, 0.85);
+        bloomPass.threshold = 0.5; 
+        bloomPass.strength = 0; 
+        bloomPass.radius = 0.5;
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        
+        const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        sunLight.position.set(5, 3, 5);
+        scene.add(sunLight);
+
+        // Lensflare System
+        const textureLoader = new THREE.TextureLoader();
+        const textureFlare0 = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/lensflare/lensflare0.png');
+        const textureFlare3 = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/lensflare/lensflare3.png');
+
+        const lensflare = new Lensflare();
+        lensflare.addElement(new LensflareElement(textureFlare0, 700, 0, new THREE.Color(0xffaa00)));
+        lensflare.addElement(new LensflareElement(textureFlare3, 60, 0.6));
+        lensflare.addElement(new LensflareElement(textureFlare3, 70, 0.7));
+        lensflare.addElement(new LensflareElement(textureFlare3, 120, 0.9));
+        lensflare.addElement(new LensflareElement(textureFlare3, 70, 1.0));
+        
+        scene.add(lensflare);
+        lensflare.visible = false;
+
+
+        function updateRNG(seedStr) {
+            const seedHash = cyrb128(seedStr);
+            rng = mulberry32(seedHash[0]);
+            currentSeed = seedStr;
+            const offsets = new THREE.Vector3(rng()*100, rng()*100, rng()*100);
+            if(material) {
+                material.uniforms.seedOffset.value = offsets;
+
+                const r = rng();
+                const randomOcean = 0.1 - r * 1.5;
+                
+                if ($('planetType').value === 'planet') {
+                    material.uniforms.oceanLevel.value = randomOcean;
+                    $('oceanLevel').value = randomOcean;
+                    $('oceanVal').textContent = randomOcean.toFixed(2);
+                    randomizeBiomeColors();
+                    randomizeTerrainParams();
+                }
+            }
+            updateUni();
+            generateTrees();
+        }
+
+        function randomizeBiomeColors() {
+            const type = $('planetType').value;
+
+            if (type === 'planet') {
+                const oceanH = 180 + rng() * 60;
+                $('colorOcean').value = '#' + new THREE.Color().setHSL(oceanH/360, 0.3 + rng() * 0.4, 0.65 + rng() * 0.2).getHexString();
+                const beachH = 30 + rng()*30;
+                $('colorBeach').value = '#' + new THREE.Color().setHSL(beachH/360, 0.4 + rng()*0.3, 0.75 + rng()*0.15).getHexString();
+                const grassH = rng() * 360;
+                $('colorGrass').value = '#' + new THREE.Color().setHSL(grassH/360, 0.4 + rng()*0.4, 0.3 + rng()*0.3).getHexString();
+                const rockH = rng() < 0.5 ? 30 + rng()*20 : 0;
+                $('colorRock').value = '#' + new THREE.Color().setHSL(rockH/360, 0.1 + rng()*0.2, 0.4 + rng()*0.2).getHexString();
+                $('colorSnow').value = '#' + new THREE.Color().setHSL(0, 0, 0.9 + rng()*0.1).getHexString();
+            } else if (type === 'moon') {
+                $('colorOcean').value = '#000000'; 
+                $('colorBeach').value = '#' + new THREE.Color().setHSL(0, 0, 0.2 + rng()*0.2).getHexString(); 
+                $('colorGrass').value = '#' + new THREE.Color().setHSL(0, 0, 0.3 + rng()*0.2).getHexString(); 
+                $('colorRock').value = '#' + new THREE.Color().setHSL(0, 0, 0.5 + rng()*0.3).getHexString(); 
+                $('colorSnow').value = '#ffffff'; 
+            } else if (type === 'sun') {
+                $('colorOcean').value = '#ffaa00';
+                $('colorBeach').value = '#ff8800';
+                $('colorGrass').value = '#ff4400';
+                $('colorRock').value = '#aa2200';
+                $('colorSnow').value = '#ffffaa';
+            }
+
+            updateBiomeUniforms();
+        }
+
+        function randomizeTerrainParams() {
+             if ($('planetType').value !== 'planet') return;
+
+            const warpBase = 0.00;
+            const persBase = 0.18;
+            const ridgeBase = 0.05;
+            const snowBase = 0.60;
+
+            const warpRand = warpBase + (rng() - 0.5) * 0.16;
+            const persRand = persBase + (rng() - 0.5) * 0.24;
+            const ridgeRand = ridgeBase + (rng() - 0.5) * 0.20;
+            const snowRand = snowBase + (rng() - 0.5) * 0.30;
+
+            $('warpScale').value = Math.max(0, Math.min(1.0, warpRand));
+            $('persistence').value = Math.max(0, Math.min(0.8, persRand));
+            $('ridge').value = Math.max(0, Math.min(1.0, ridgeRand));
+            $('snowLevel').value = Math.max(0.3, Math.min(0.9, snowRand));
+
+            if (rng() < 0.70) {
+                $('treeDensity').value = 0;
+            } else {
+                $('treeDensity').value = 10 + Math.floor(rng() * 80); 
+            }
+            $('treeDensVal').textContent = $('treeDensity').value;
+        }
+
+        // --- SHADER UTILS ---
+        const shaderUtils = `
+            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+            vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+            float snoise(vec3 v) {
+                const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+                const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+                vec3 i  = floor(v + dot(v, C.yyy));
+                vec3 x0 = v - i + dot(i, C.xxx);
+                vec3 g = step(x0.yzx, x0.xyz);
+                vec3 l = 1.0 - g;
+                vec3 i1 = min( g.xyz, l.zxy );
+                vec3 i2 = max( g.xyz, l.zxy );
+                vec3 x1 = x0 - i1 + C.xxx;
+                vec3 x2 = x0 - i2 + C.yyy;
+                vec3 x3 = x0 - D.yyy;
+                i = mod289(i);
+                vec4 p = permute( permute( permute(
+                    i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                    + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+                    + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+                float n_ = 0.142857142857;
+                vec3  ns = n_ * D.wyz - D.xzx;
+                vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+                vec4 x_ = floor(j * ns.z);
+                vec4 y_ = floor(j - 7.0 * x_ );
+                vec4 x = x_ *ns.x + ns.yyyy;
+                vec4 y = y_ *ns.x + ns.yyyy;
+                vec4 h = 1.0 - abs(x) - abs(y);
+                vec4 b0 = vec4( x.xy, y.xy );
+                vec4 b1 = vec4( x.zw, y.zw );
+                vec4 s0 = floor(b0)*2.0 + 1.0;
+                vec4 s1 = floor(b1)*2.0 + 1.0;
+                vec4 sh = -step(h, vec4(0.0));
+                vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+                vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+                vec3 p0 = vec3(a0.xy,h.x);
+                vec3 p1 = vec3(a0.zw,h.y);
+                vec3 p2 = vec3(a1.xy,h.z);
+                vec3 p3 = vec3(a1.zw,h.w);
+                vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+                p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+                vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                m = m * m;
+                return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
+            }
+
+            float fbm(vec3 p, int octaves, float persistence, float lacunarity) {
+                float total = 0.0;
+                float amplitude = 1.0;
+                float frequency = 1.0;
+                float maxValue = 0.0;
+                for(int i=0; i<20; i++) {
+                    if (i >= octaves) break;
+                    total += snoise(p * frequency) * amplitude;
+                    maxValue += amplitude;
+                    amplitude *= persistence;
+                    frequency *= lacunarity;
+                }
+                return total / maxValue;
+            }
+            
+            vec2 getUV(vec3 p) {
+                vec3 n = normalize(p);
+                float u = 0.5 + (atan(n.z, n.x) / (2.0 * 3.14159));
+                float v = 0.5 - (asin(n.y) / 3.14159);
+                return vec2(u, v);
+            }
+
+            float hash(vec2 p) {
+                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+            }
+            
+            float grassPattern(vec3 pos, float scale) {
+                vec2 uv = getUV(pos) * scale;
+                vec2 cellId = floor(uv);
+                vec2 cellUv = fract(uv);
+                float randOffset = hash(cellId) * 0.5;
+                float randHeight = 0.5 + hash(cellId + 100.0) * 0.5;
+                float bladeWidth = 0.08 + hash(cellId + 50.0) * 0.08;
+                float centerX = 0.5 + (hash(cellId + 25.0) - 0.5) * 0.3;
+                float distFromCenter = abs(cellUv.x - centerX);
+                float taper = 1.0 - cellUv.y * randHeight;
+                float blade = 1.0 - smoothstep(0.0, bladeWidth * taper, distFromCenter);
+                blade *= smoothstep(1.0, 0.7, cellUv.y);
+                return blade;
+            }
+        `;
+
+        // --- PLANET MATERIAL ---
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                seedOffset: { value: new THREE.Vector3(0,0,0) },
+                radius: { value: 1.0 },
+                heightScale: { value: 0.15 },
+                frequency: { value: 3.0 },
+                octaves: { value: 6 },
+                persistence: { value: 0.5 },
+                ridge: { value: 0.5 },
+                warpScale: { value: 0.0 },
+                shapeFactor: { value: 0.0 }, 
+                oceanLevel: { value: 0.05 },
+                snowLevel: { value: 0.6 },
+                moistureOffset: { value: 0.0 },
+                sunDirection: { value: new THREE.Vector3(1, 0.4, 0.5).normalize() },
+                time: { value: 0 },
+                heightMap: { value: null },
+                texMix: { value: 0.0 },
+                oceanColor: { value: new THREE.Color("#87ceeb") },
+                beachColor: { value: new THREE.Color("#ffd4a3") },
+                grassColor: { value: new THREE.Color("#1a8c1a") },
+                rockColor: { value: new THREE.Color("#555555") },
+                snowColor: { value: new THREE.Color("#ffffff") },
+                waterNoise: { value: 1.0 },
+                isSun: { value: 0.0 }
+            },
+            vertexShader: `
+                // Mobile Optimization: Ensure precision
+                precision mediump float;
+                
+                uniform float radius;
+                uniform float heightScale;
+                uniform float frequency;
+                uniform int octaves;
+                uniform float persistence;
+                uniform float ridge;
+                uniform float warpScale;
+                uniform vec3 seedOffset;
+                uniform float shapeFactor; 
+                uniform sampler2D heightMap;
+                uniform float texMix;
+                uniform float isSun;
+                uniform float time;
+
+                varying vec3 vPos;
+                varying float vElevation;
+                varying vec2 vUv;
+                varying vec3 vBasePos;
+                varying float vSunNoise;
+
+                ${shaderUtils}
+
+                void main() {
+                    vUv = uv;
+                    vec3 sphereP = normalize(position);
+                    vec3 absP = abs(position);
+                    float maxC = max(max(absP.x, absP.y), absP.z);
+                    vec3 boxP = position / maxC;
+                    vec3 baseDir = mix(sphereP, boxP, shapeFactor);
+                    vec3 basePos = baseDir * radius;
+
+                    vBasePos = baseDir; 
+
+                    vec3 warpPos = sphereP * 0.5 + seedOffset;
+                    if (isSun > 0.5) warpPos += vec3(time * 0.1);
+
+                    float warp = snoise(warpPos) * warpScale;
+                    vec3 noisePos = (sphereP + vec3(warp)) * frequency + seedOffset;
+                    
+                    if (isSun > 0.5) noisePos += vec3(time * 0.2, -time*0.1, time*0.1);
+
+                    // Reduce loops in shader if performance is hit, but vertex shader usually ok
+                    float n = fbm(noisePos, octaves, persistence, 2.0);
+                    float r = 1.0 - abs(snoise(noisePos));
+                    r = pow(r, 3.0); 
+                    float finalNoise = mix(n, r, ridge);
+                    
+                    vec2 sphericalUV = getUV(sphereP);
+                    float texHeight = texture2D(heightMap, sphericalUV).r;
+                    float combinedHeight = mix(finalNoise, texHeight * 2.0 - 1.0, texMix);
+                    float displacement = combinedHeight * heightScale;
+                    
+                    vec3 finalPos = basePos + normalize(baseDir) * displacement;
+                    
+                    vPos = finalPos; 
+                    vElevation = combinedHeight;
+                    vSunNoise = finalNoise; 
+
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(finalPos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                precision mediump float;
+                
+                uniform float oceanLevel;
+                uniform float snowLevel;
+                uniform float moistureOffset;
+                uniform vec3 sunDirection;
+                uniform float time;
+                uniform vec3 seedOffset;
+                uniform float waterNoise;
+                uniform float isSun;
+
+                uniform vec3 oceanColor;
+                uniform vec3 beachColor;
+                uniform vec3 grassColor;
+                uniform vec3 rockColor;
+                uniform vec3 snowColor;
+
+                varying vec3 vPos;
+                varying vec3 vBasePos;
+                varying float vElevation;
+                varying float vSunNoise;
+                
+                ${shaderUtils}
+
+                float waterNoisePattern(vec3 pos, float time) {
+                    vec3 p1 = pos * 15.0 + vec3(time * 0.3, time * 0.2, 0.0);
+                    vec3 p2 = pos * 25.0 - vec3(time * 0.2, 0.0, time * 0.25);
+                    vec3 p3 = pos * 8.0 + vec3(0.0, time * 0.15, time * 0.1);
+                    return (snoise(p1) * 0.5 + snoise(p2) * 0.3 + snoise(p3) * 0.2);
+                }
+
+                void main() {
+                    // --- SUN LOGIC ---
+                    if (isSun > 0.5) {
+                        float heat = vSunNoise * 0.5 + 0.5; 
+                        
+                        float detail = snoise(vPos * 5.0 + vec3(time)) * 0.1;
+                        heat += detail;
+
+                        vec3 c1 = vec3(0.6, 0.0, 0.0); 
+                        vec3 c2 = vec3(1.0, 0.4, 0.0); 
+                        vec3 c3 = vec3(1.0, 0.9, 0.4); 
+                        vec3 c4 = vec3(2.0, 2.0, 2.0); 
+
+                        vec3 color;
+                        if (heat < 0.33) color = mix(c1, c2, heat * 3.0);
+                        else if (heat < 0.66) color = mix(c2, c3, (heat - 0.33) * 3.0);
+                        else color = mix(c3, c4, (heat - 0.66) * 3.0);
+
+                        vec3 N = normalize(vPos);
+                        vec3 V = normalize(cameraPosition - vPos);
+                        float rim = 1.0 - max(dot(N, V), 0.0);
+                        color += vec3(rim * 0.5, rim * 0.2, 0.0); 
+
+                        gl_FragColor = vec4(color, 1.0);
+                        return;
+                    }
+
+                    // --- PLANET/MOON LOGIC ---
+                    vec3 N = normalize(vPos); 
+                    vec3 L = normalize(sunDirection);
+                    vec3 V = normalize(cameraPosition - vPos);
+                    
+                    float h = vElevation; 
+                    bool hasWater = oceanLevel > -0.99;
+                    
+                    vec3 color;
+                    float specular = 0.0;
+                    float slope = 1.0 - dot(N, normalize(vBasePos));
+
+                    if (hasWater && h < oceanLevel) {
+                        color = oceanColor;
+                        if (waterNoise > 0.5) {
+                            float wNoise = waterNoisePattern(normalize(vPos), time);
+                            color = color * (1.0 + wNoise * 0.15);
+                            float caustic = pow(max(0.0, wNoise), 2.0) * 0.3;
+                            color += vec3(caustic);
+                        }
+                        specular = 0.8;
+                    } else {
+                        if (hasWater && h < oceanLevel + 0.015) {
+                            color = beachColor;
+                        } else if (h > snowLevel) {
+                            color = snowColor;
+                        } else {
+                            float moist = snoise(normalize(vPos) * 2.5 + seedOffset) + moistureOffset;
+                            if (slope > 0.18) {
+                                color = rockColor;
+                            } else {
+                                vec3 baseVegColor = mix(grassColor * 0.4, grassColor, smoothstep(0.0, 0.6, moist));
+                                if (moist > 0.0) {
+                                    float grassEffect = max(
+                                        grassPattern(vPos, 200.0),
+                                        max(grassPattern(vPos + vec3(17.3), 350.0) * 0.7,
+                                            grassPattern(vPos + vec3(31.7), 120.0) * 0.5)
+                                    );
+                                    float grassIntensity = smoothstep(0.0, 0.4, moist);
+                                    grassEffect *= grassIntensity;
+                                    color = mix(baseVegColor * 0.7, baseVegColor * 1.3 + vec3(0.05, 0.08, 0.0), grassEffect);
+                                } else {
+                                    color = baseVegColor;
+                                }
+                            }
+                        }
+                    }
+
+                    float diff = max(dot(N, L), 0.0);
+                    vec3 reflectDir = reflect(-L, N);
+                    float spec = pow(max(dot(V, reflectDir), 0.0), 32.0) * specular;
+                    vec3 finalColor = color * (diff * 0.7 + 0.4) + vec3(spec);
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `,
+            side: THREE.FrontSide
+        });
+
+        let planetMesh;
+        let geometryMode = 'quad';
+
+        function createGeometry() {
+            if (planetMesh) scene.remove(planetMesh);
+
+            let geo;
+            let shapeVal = 0.0;
+
+            // Use the GEOMETRY_SEGMENTS constant determined by mobile/desktop check
+            if (geometryMode === 'cube') {
+                geo = new THREE.BoxGeometry(1, 1, 1, GEOMETRY_SEGMENTS, GEOMETRY_SEGMENTS, GEOMETRY_SEGMENTS);
+                shapeVal = 0.7;
+            } else {
+                geo = new THREE.BoxGeometry(1, 1, 1, GEOMETRY_SEGMENTS, GEOMETRY_SEGMENTS, GEOMETRY_SEGMENTS);
+                shapeVal = 0.0;
+            }
+
+            material.uniforms.shapeFactor.value = shapeVal;
+
+            planetMesh = new THREE.Mesh(geo, material);
+            planetMesh.scale.setScalar(material.uniforms.radius.value);
+            scene.add(planetMesh);
+        }
+
+        // --- TREES (INSTANCING) ---
+        // Using MAX_TREES determined at start
+        const trunkGeometry = new THREE.CylinderGeometry(0.03, 0.04, 0.4, 6);
+        const foliageSphereGeometry = new THREE.IcosahedronGeometry(0.12, 1);
+        const foliageConeGeometry = new THREE.ConeGeometry(0.1, 0.18, 8);
+        const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        const foliageMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+        
+        let trunkInstances = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, MAX_TREES);
+        let foliageInstances = new THREE.InstancedMesh(foliageSphereGeometry, foliageMaterial, MAX_TREES * 2);
+        let coneInstances = new THREE.InstancedMesh(foliageConeGeometry, foliageMaterial, MAX_TREES * 3);
+        
+        [trunkInstances, foliageInstances, coneInstances].forEach(mesh => {
+            mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_TREES * 9), 3);
+            scene.add(mesh);
+            mesh.count = 0;
+        });
+
+        const tempMatrix = new THREE.Matrix4();
+        const tempPosition = new THREE.Vector3();
+        const tempQuaternion = new THREE.Quaternion();
+        const tempScale = new THREE.Vector3();
+        const tempColor = new THREE.Color();
+        const upVector = new THREE.Vector3(0, 1, 0);
+
+        function mod289_3(v) { return [v[0]-Math.floor(v[0]*(1.0/289.0))*289.0, v[1]-Math.floor(v[1]*(1.0/289.0))*289.0, v[2]-Math.floor(v[2]*(1.0/289.0))*289.0]; }
+        function mod289_4(v) { return [v[0]-Math.floor(v[0]*(1.0/289.0))*289.0, v[1]-Math.floor(v[1]*(1.0/289.0))*289.0, v[2]-Math.floor(v[2]*(1.0/289.0))*289.0, v[3]-Math.floor(v[3]*(1.0/289.0))*289.0]; }
+        function permute4(v) { return mod289_4([((v[0]*34.0+1.0)*v[0]), ((v[1]*34.0+1.0)*v[1]), ((v[2]*34.0+1.0)*v[2]), ((v[3]*34.0+1.0)*v[3])]); }
+        function taylorInvSqrt4(v) { return [1.79284291400159-0.85373472095314*v[0], 1.79284291400159-0.85373472095314*v[1], 1.79284291400159-0.85373472095314*v[2], 1.79284291400159-0.85373472095314*v[3]]; }
+        function dot3(a, b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+        function snoise(v) {
+            const C = [1.0/6.0, 1.0/3.0], D = [0.0, 0.5, 1.0, 2.0];
+            const dotVCyyy = v[0]*C[1] + v[1]*C[1] + v[2]*C[1];
+            const i = [Math.floor(v[0]+dotVCyyy), Math.floor(v[1]+dotVCyyy), Math.floor(v[2]+dotVCyyy)];
+            const dotICxxx = i[0]*C[0] + i[1]*C[0] + i[2]*C[0];
+            const x0 = [v[0]-i[0]+dotICxxx, v[1]-i[1]+dotICxxx, v[2]-i[2]+dotICxxx];
+            const g = [x0[1]<=x0[0]?1.0:0.0, x0[2]<=x0[1]?1.0:0.0, x0[0]<=x0[2]?1.0:0.0];
+            const l = [1.0-g[0], 1.0-g[1], 1.0-g[2]];
+            const i1 = [Math.min(g[0], l[2]), Math.min(g[1], l[0]), Math.min(g[2], l[1])];
+            const i2 = [Math.max(g[0], l[2]), Math.max(g[1], l[0]), Math.max(g[2], l[1])];
+            const x1 = [x0[0]-i1[0]+C[0], x0[1]-i1[1]+C[0], x0[2]-i1[2]+C[0]];
+            const x2 = [x0[0]-i2[0]+C[1], x0[1]-i2[1]+C[1], x0[2]-i2[2]+C[1]];
+            const x3 = [x0[0]-0.5, x0[1]-0.5, x0[2]-0.5];
+            const iMod = mod289_3(i);
+            let p = permute4([iMod[2], iMod[2]+i1[2], iMod[2]+i2[2], iMod[2]+1.0]);
+            p = permute4([p[0]+iMod[1], p[1]+iMod[1]+i1[1], p[2]+iMod[1]+i2[1], p[3]+iMod[1]+1.0]);
+            p = permute4([p[0]+iMod[0], p[1]+iMod[0]+i1[0], p[2]+iMod[0]+i2[0], p[3]+iMod[0]+1.0]);
+            const n_ = 0.142857142857;
+            const ns = [n_*D[3]-D[0], n_*D[1]-D[2], n_*D[2]-D[0]];
+            const nsz2 = ns[2]*ns[2];
+            const j = [p[0]-49.0*Math.floor(p[0]*nsz2), p[1]-49.0*Math.floor(p[1]*nsz2), p[2]-49.0*Math.floor(p[2]*nsz2), p[3]-49.0*Math.floor(p[3]*nsz2)];
+            const x_ = [Math.floor(j[0]*ns[2]), Math.floor(j[1]*ns[2]), Math.floor(j[2]*ns[2]), Math.floor(j[3]*ns[2])];
+            const y_ = [Math.floor(j[0]-7.0*x_[0]), Math.floor(j[1]-7.0*x_[1]), Math.floor(j[2]-7.0*x_[2]), Math.floor(j[3]-7.0*x_[3])];
+            const x = [x_[0]*ns[0]+ns[1], x_[1]*ns[0]+ns[1], x_[2]*ns[0]+ns[1], x_[3]*ns[0]+ns[1]];
+            const y = [y_[0]*ns[0]+ns[1], y_[1]*ns[0]+ns[1], y_[2]*ns[0]+ns[1], y_[3]*ns[0]+ns[1]];
+            const h = [1.0-Math.abs(x[0])-Math.abs(y[0]), 1.0-Math.abs(x[1])-Math.abs(y[1]), 1.0-Math.abs(x[2])-Math.abs(y[2]), 1.0-Math.abs(x[3])-Math.abs(y[3])];
+            const b0 = [x[0], x[1], y[0], y[1]], b1 = [x[2], x[3], y[2], y[3]];
+            const s0 = [Math.floor(b0[0])*2.0+1.0, Math.floor(b0[1])*2.0+1.0, Math.floor(b0[2])*2.0+1.0, Math.floor(b0[3])*2.0+1.0];
+            const s1 = [Math.floor(b1[0])*2.0+1.0, Math.floor(b1[1])*2.0+1.0, Math.floor(b1[2])*2.0+1.0, Math.floor(b1[3])*2.0+1.0];
+            const sh = [h[0]<0?-1:0, h[1]<0?-1:0, h[2]<0?-1:0, h[3]<0?-1:0];
+            const a0 = [b0[0]+s0[0]*sh[0], b0[2]+s0[2]*sh[0], b0[1]+s0[1]*sh[1], b0[3]+s0[3]*sh[1]];
+            const a1 = [b1[0]+s1[0]*sh[2], b1[2]+s1[2]*sh[2], b1[1]+s1[1]*sh[3], b1[3]+s1[3]*sh[3]];
+            const p0=[a0[0],a0[1],h[0]], p1=[a0[2],a0[3],h[1]], p2=[a1[0],a1[1],h[2]], p3=[a1[2],a1[3],h[3]];
+            const norm = taylorInvSqrt4([dot3(p0,p0), dot3(p1,p1), dot3(p2,p2), dot3(p3,p3)]);
+            const p0n=[p0[0]*norm[0],p0[1]*norm[0],p0[2]*norm[0]], p1n=[p1[0]*norm[1],p1[1]*norm[1],p1[2]*norm[1]], p2n=[p2[0]*norm[2],p2[1]*norm[2],p2[2]*norm[2]], p3n=[p3[0]*norm[3],p3[1]*norm[3],p3[2]*norm[3]];
+            let m = [Math.max(0.6-dot3(x0,x0),0.0), Math.max(0.6-dot3(x1,x1),0.0), Math.max(0.6-dot3(x2,x2),0.0), Math.max(0.6-dot3(x3,x3),0.0)];
+            m = [m[0]*m[0], m[1]*m[1], m[2]*m[2], m[3]*m[3]];
+            return 42.0 * (m[0]*m[0]*dot3(p0n,x0) + m[1]*m[1]*dot3(p1n,x1) + m[2]*m[2]*dot3(p2n,x2) + m[3]*m[3]*dot3(p3n,x3));
+        }
+
+        function jsFbm(pos, octaves, persistence, frequency, seedOffset) {
+            let total = 0, amplitude = 1, maxValue = 0, freq = frequency;
+            for (let i = 0; i < octaves; i++) {
+                const p = [pos.x * freq + seedOffset.x, pos.y * freq + seedOffset.y, pos.z * freq + seedOffset.z];
+                total += snoise(p) * amplitude;
+                maxValue += amplitude;
+                amplitude *= persistence;
+                freq *= 2;
+            }
+            return total / maxValue;
+        }
+
+        function samplePlanetHeight(position) {
+            const normalized = position.clone().normalize();
+            const m = material.uniforms;
+            const warpPos = [normalized.x * 0.5 + m.seedOffset.value.x, normalized.y * 0.5 + m.seedOffset.value.y, normalized.z * 0.5 + m.seedOffset.value.z];
+            const warp = snoise(warpPos) * m.warpScale.value;
+            const noisePos = new THREE.Vector3((normalized.x + warp) * m.frequency.value + m.seedOffset.value.x, (normalized.y + warp) * m.frequency.value + m.seedOffset.value.y, (normalized.z + warp) * m.frequency.value + m.seedOffset.value.z);
+            const n = jsFbm(noisePos, m.octaves.value, m.persistence.value, 1, new THREE.Vector3());
+            const r = Math.pow(1.0 - Math.abs(snoise([noisePos.x, noisePos.y, noisePos.z])), 3.0);
+            return n * (1.0 - m.ridge.value) + r * m.ridge.value;
+        }
+
+        function generateTrees() {
+            trunkInstances.count = 0; foliageInstances.count = 0; coneInstances.count = 0;
+            
+            const type = $('planetType').value;
+            if (!$('enableTrees').checked || type === 'sun' || type === 'moon') {
+                return;
+            }
+            
+            const sliderValue = parseInt($('treeDensity').value);
+            if (sliderValue === 0) return;
+            
+            // Adjust calculations for reduced MAX_TREES
+            const actualTreeCount = Math.min(MAX_TREES, Math.floor(Math.pow(sliderValue / 100, 2.5) * (MAX_TREES * 0.8)));
+            const treeSize = parseFloat($('treeSize').value);
+            const planetRadius = parseFloat($('radius').value);
+            const oceanLevel = material.uniforms.oceanLevel.value;
+            const snowLevel = material.uniforms.snowLevel.value;
+            const heightScale = material.uniforms.heightScale.value;
+            const baseTreeHeight = planetRadius * 0.04 * treeSize;
+            
+            const seedHash = cyrb128(currentSeed + "_trees");
+            const treeRng = mulberry32(seedHash[0]);
+            const grassHex = $('colorGrass').value;
+            const baseGrassColor = new THREE.Color(grassHex);
+            
+            let placedTrees = 0, attempts = 0, maxAttempts = actualTreeCount * 5;
+            
+            while (placedTrees < actualTreeCount && attempts < maxAttempts) {
+                attempts++;
+                const theta = treeRng() * Math.PI * 2;
+                const phi = Math.acos(2 * treeRng() - 1);
+                const position = new THREE.Vector3(Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta));
+                const height = samplePlanetHeight(position);
+                
+                if (height < oceanLevel + 0.08) continue;
+                if (height > snowLevel - 0.05) continue;
+                
+                const treeHeight = baseTreeHeight * (0.7 + treeRng() * 0.6);
+                const isConifer = treeRng() <= 0.4;
+                const surfacePosition = position.clone().multiplyScalar(planetRadius * (1 + height * heightScale));
+                
+                tempQuaternion.setFromUnitVectors(upVector, position);
+                tempQuaternion.multiply(new THREE.Quaternion().setFromAxisAngle(position, treeRng() * Math.PI * 2));
+                
+                tempPosition.copy(surfacePosition).addScaledVector(position, treeHeight * 0.2);
+                tempScale.set(treeHeight, treeHeight, treeHeight);
+                tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
+                trunkInstances.setMatrixAt(placedTrees, tempMatrix);
+                tempColor.setHex(isConifer ? 0x3d2817 : 0x4a3520).offsetHSL(0, (treeRng()-0.5)*0.1, (treeRng()-0.5)*0.1);
+                trunkInstances.setColorAt(placedTrees, tempColor);
+                
+                const isGrassMatch = treeRng() < 0.60;
+                tempColor.copy(baseGrassColor);
+                if (isGrassMatch) tempColor.offsetHSL((treeRng()-0.5)*0.04, 0, (treeRng()-0.5)*0.1);
+                else tempColor.offsetHSL((treeRng()-0.5)*0.1, -0.1, -0.15);
+                
+                if (isConifer) {
+                    tempColor.multiplyScalar(0.75);
+                    const layers = 4 + Math.floor(treeRng() * 2);
+                    for (let i = 0; i < layers && coneInstances.count < MAX_TREES * 3; i++) {
+                        const layerH = treeHeight * 0.15, layerR = treeHeight * 0.2 * (1 - i / layers);
+                        tempPosition.copy(surfacePosition).addScaledVector(position, treeHeight * 0.3 + i * layerH * 0.7);
+                        tempScale.set(layerR * 10, layerH * 5, layerR * 10);
+                        tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
+                        coneInstances.setMatrixAt(coneInstances.count, tempMatrix);
+                        coneInstances.setColorAt(coneInstances.count, tempColor);
+                        coneInstances.count++;
+                    }
+                } else {
+                    const r = treeHeight * 0.25;
+                    tempPosition.copy(surfacePosition).addScaledVector(position, treeHeight * 0.45);
+                    tempScale.set(r*8*(1+(treeRng()-0.5)*0.3), r*7, r*8*(1+(treeRng()-0.5)*0.3));
+                    tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
+                    foliageInstances.setMatrixAt(foliageInstances.count, tempMatrix);
+                    foliageInstances.setColorAt(foliageInstances.count, tempColor);
+                    foliageInstances.count++;
+                    
+                    const numClusters = Math.floor(1 + treeRng() * 2);
+                    const cCol = tempColor.clone();
+                    for (let i = 0; i < numClusters && foliageInstances.count < MAX_TREES*2; i++) {
+                        const a = treeRng() * Math.PI * 2, d = r * 0.5;
+                        const off = new THREE.Vector3(Math.cos(a)*d, treeHeight*(0.4+treeRng()*0.1), Math.sin(a)*d).applyQuaternion(tempQuaternion);
+                        tempPosition.copy(surfacePosition).add(off);
+                        const cs = r * (4 + treeRng() * 2);
+                        tempScale.set(cs, cs*0.8, cs);
+                        tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
+                        foliageInstances.setMatrixAt(foliageInstances.count, tempMatrix);
+                        foliageInstances.setColorAt(foliageInstances.count, cCol);
+                        foliageInstances.count++;
+                    }
+                }
+                placedTrees++;
+            }
+            trunkInstances.count = placedTrees;
+            trunkInstances.instanceMatrix.needsUpdate = true; trunkInstances.instanceColor.needsUpdate = true;
+            foliageInstances.instanceMatrix.needsUpdate = true; foliageInstances.instanceColor.needsUpdate = true;
+            coneInstances.instanceMatrix.needsUpdate = true; coneInstances.instanceColor.needsUpdate = true;
+        }
+
+        // --- UI LOGIC ---
+        const $ = (id) => document.getElementById(id);
+        
+        // Handle Planet Types
+        $('planetType').addEventListener('change', (e) => {
+            const type = e.target.value;
+            
+            if (type === 'moon') {
+                $('enableTrees').checked = false;
+                $('oceanLevel').value = -0.95; 
+                $('radius').value = 0.50; // Moon Radius
+                material.uniforms.isSun.value = 0.0;
+                lensflare.visible = false;
+                bloomPass.strength = 0.0; // Disable Glow
+                randomizeBiomeColors();
+            } else if (type === 'sun') {
+                $('enableTrees').checked = false;
+                $('oceanLevel').value = -1.0; 
+                $('radius').value = 1.00; // Reset Radius
+                material.uniforms.isSun.value = 1.0;
+                lensflare.visible = true;
+                bloomPass.strength = 1.2; // Enable Glow
+                randomizeBiomeColors(); 
+            } else {
+                // Planet
+                material.uniforms.isSun.value = 0.0;
+                $('radius').value = 1.00; // Reset Radius
+                lensflare.visible = false;
+                bloomPass.strength = 0.0; // Disable Glow
+            }
+            updateUni();
+            generateTrees();
+        });
+
+        function setGeo(mode, btnId) {
+            geometryMode = mode;
+            createGeometry();
+            ['typeQuad', 'typeCube'].forEach(id => $(id).classList.remove('active-geo'));
+            $(btnId).classList.add('active-geo');
+        }
+        $('typeQuad').onclick = () => setGeo('quad', 'typeQuad');
+        $('typeCube').onclick = () => setGeo('cube', 'typeCube');
+
+        function updateBiomeUniforms() {
+            material.uniforms.oceanColor.value.set($('colorOcean').value);
+            material.uniforms.beachColor.value.set($('colorBeach').value);
+            material.uniforms.grassColor.value.set($('colorGrass').value);
+            material.uniforms.rockColor.value.set($('colorRock').value);
+            material.uniforms.snowColor.value.set($('colorSnow').value);
+        }
+
+        function updateUni() {
+            const m = material.uniforms;
+            const newRadius = parseFloat($('radius').value);
+
+            m.radius.value = newRadius;
+            m.warpScale.value = parseFloat($('warpScale').value);
+            m.heightScale.value = parseFloat($('heightScale').value);
+            m.frequency.value = parseFloat($('frequency').value);
+            m.octaves.value = parseInt($('octaves').value);
+            m.persistence.value = parseFloat($('persistence').value);
+            m.ridge.value = parseFloat($('ridge').value);
+            m.oceanLevel.value = parseFloat($('oceanLevel').value);
+            m.snowLevel.value = parseFloat($('snowLevel').value);
+            m.moistureOffset.value = parseFloat($('moistureOffset').value);
+            m.texMix.value = parseFloat($('texMix').value);
+            m.waterNoise.value = $('waterNoise').checked ? 1.0 : 0.0;
+
+            if (planetMesh) planetMesh.scale.setScalar(newRadius);
+
+            $('radVal').textContent = newRadius.toFixed(2);
+            $('warpVal').textContent = m.warpScale.value.toFixed(2);
+            $('heightVal').textContent = m.heightScale.value.toFixed(3);
+            $('freqVal').textContent = m.frequency.value.toFixed(2);
+            $('octVal').textContent = m.octaves.value;
+            $('persVal').textContent = m.persistence.value.toFixed(2);
+            $('ridgeVal').textContent = m.ridge.value.toFixed(2);
+            $('oceanVal').textContent = m.oceanLevel.value.toFixed(2);
+            $('snowVal').textContent = m.snowLevel.value.toFixed(2);
+            $('moistVal').textContent = m.moistureOffset.value.toFixed(2);
+        }
+
+        document.querySelectorAll('input[type=range]').forEach(el => el.addEventListener('input', updateUni));
+        ['colorOcean','colorBeach','colorGrass','colorRock','colorSnow'].forEach(id => $(id).addEventListener('input', updateBiomeUniforms));
+        $('waterNoise').addEventListener('change', updateUni);
+        
+        $('enableTrees').addEventListener('change', generateTrees);
+        $('treeDensity').addEventListener('input', () => $('treeDensVal').textContent = $('treeDensity').value);
+        $('treeDensity').addEventListener('change', generateTrees);
+        $('treeSize').addEventListener('input', () => $('treeSizeVal').textContent = parseFloat($('treeSize').value).toFixed(1));
+        $('treeSize').addEventListener('change', generateTrees);
+        $('btnRegenerateTrees').addEventListener('click', generateTrees);
+        ['radius', 'heightScale', 'oceanLevel', 'snowLevel'].forEach(id => $(id).addEventListener('change', generateTrees));
+
+        $('seedInput').addEventListener('change', (e) => updateRNG(e.target.value));
+        $('randomSeed').onclick = () => {
+            const r = Math.random().toString(36).substring(7);
+            $('seedInput').value = r;
+            updateRNG(r);
+        };
+
+        $('btnImportHM').onclick = () => $('fileInputHM').click();
+        $('fileInputHM').onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            // Read as Data URL to store for ZIP export later
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                importedHeightMapBase64 = evt.target.result;
+                new THREE.TextureLoader().load(importedHeightMapBase64, (tex) => {
+                    material.uniforms.heightMap.value = tex;
+                    $('texMix').value = 1.0;
+                    updateUni();
+                    generateTrees();
+                });
+            };
+            reader.readAsDataURL(file);
+        };
+
+        // --- NEW EXPORT LOGIC (ZIP) ---
+        $('btnSaveData').onclick = () => {
+            const zip = new JSZip();
+            
+            const data = {
+                seed: currentSeed,
+                type: $('planetType').value, 
+                mode: geometryMode,
+                hasHeightMap: !!importedHeightMapBase64,
+                params: {
+                    radius: $('radius').value,
+                    warpScale: $('warpScale').value,
+                    heightScale: $('heightScale').value,
+                    frequency: $('frequency').value,
+                    octaves: $('octaves').value,
+                    persistence: $('persistence').value,
+                    ridge: $('ridge').value,
+                    oceanLevel: $('oceanLevel').value,
+                    snowLevel: $('snowLevel').value,
+                    moistureOffset: $('moistureOffset').value,
+                    texMix: $('texMix').value,
+                    waterNoise: $('waterNoise').checked,
+                    enableTrees: $('enableTrees').checked,
+                    treeDensity: $('treeDensity').value,
+                    treeSize: $('treeSize').value
+                },
+                colors: {
+                    ocean: $('colorOcean').value,
+                    beach: $('colorBeach').value,
+                    grass: $('colorGrass').value,
+                    rock: $('colorRock').value,
+                    snow: $('colorSnow').value
+                }
+            };
+            
+            zip.file("planet_data.json", JSON.stringify(data, null, 2));
+            
+            // Include heightmap image if it exists
+            if (importedHeightMapBase64) {
+                // Remove header "data:image/png;base64,"
+                const base64Data = importedHeightMapBase64.split(',')[1];
+                zip.file("heightmap.png", base64Data, {base64: true});
+            }
+
+            zip.generateAsync({type:"blob"}).then(function(content) {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                const typePrefix = $('planetType').value;
+                link.download = `${typePrefix}_${currentSeed}.zip`;
+                link.click();
+            });
+        };
+
+        // --- NEW IMPORT LOGIC (ZIP) ---
+        $('btnLoadData').onclick = () => $('fileInputData').click();
+        $('fileInputData').onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            if (file.name.endsWith('.zip')) {
+                // Handle ZIP
+                JSZip.loadAsync(file).then(function(zip) {
+                    // Load JSON
+                    return zip.file("planet_data.json").async("string").then(function(jsonStr) {
+                        const data = JSON.parse(jsonStr);
+                        applyPlanetData(data);
+                        
+                        // Check for Heightmap Image
+                        if (zip.file("heightmap.png")) {
+                            zip.file("heightmap.png").async("base64").then(function(b64) {
+                                importedHeightMapBase64 = "data:image/png;base64," + b64;
+                                new THREE.TextureLoader().load(importedHeightMapBase64, (tex) => {
+                                    material.uniforms.heightMap.value = tex;
+                                    // texMix is handled in applyPlanetData but we ensure texture is ready here
+                                });
+                            });
+                        } else {
+                            importedHeightMapBase64 = null;
+                            material.uniforms.heightMap.value = null;
+                        }
+                    });
+                }).catch(err => alert("Error reading ZIP: " + err));
+            } else {
+                // Handle Legacy JSON
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        applyPlanetData(data);
+                    } catch(err) { alert("Invalid JSON file"); }
+                };
+                reader.readAsText(file);
+            }
+        };
+
+        function applyPlanetData(data) {
+            $('seedInput').value = data.seed;
+            
+            if (data.type) {
+                $('planetType').value = data.type;
+                if(data.type === 'sun') { 
+                    material.uniforms.isSun.value = 1.0; 
+                    lensflare.visible = true; 
+                    bloomPass.strength = 1.2;
+                } else if(data.type === 'moon') {
+                    material.uniforms.isSun.value = 0.0;
+                    lensflare.visible = false;
+                    bloomPass.strength = 0.0;
+                } else { 
+                    material.uniforms.isSun.value = 0.0; 
+                    lensflare.visible = false; 
+                    bloomPass.strength = 0.0;
+                }
+            }
+
+            updateRNG(data.seed);
+            if(data.mode) {
+                if(data.mode === 'cube') $('typeCube').click();
+                else $('typeQuad').click();
+            }
+            for(let key in data.params) {
+                if(key === 'waterNoise') $('waterNoise').checked = data.params[key];
+                else if(key === 'enableTrees') $('enableTrees').checked = data.params[key];
+                else if($(key)) $(key).value = data.params[key];
+            }
+            if(data.colors) {
+                if(data.colors.ocean) $('colorOcean').value = data.colors.ocean;
+                $('colorBeach').value = data.colors.beach;
+                $('colorGrass').value = data.colors.grass;
+                $('colorRock').value = data.colors.rock;
+                $('colorSnow').value = data.colors.snow;
+                updateBiomeUniforms();
+            }
+            updateUni();
+            generateTrees();
+        }
+
+        // Initialize
+        setGeo('quad', 'typeQuad');
+        updateRNG("Cosmos");
+        updateUni();
+        updateBiomeUniforms();
+        generateTrees();
+
+        let frameCount = 0;
+        let lastFpsUpdate = performance.now();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            material.uniforms.time.value += 0.005;
+            
+            composer.render();
+            
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFpsUpdate >= 500) {
+                const fps = Math.round(frameCount / ((now - lastFpsUpdate) / 1000));
+                $('fps-counter').textContent = `FPS: ${fps} | Trees: ${trunkInstances.count}`;
+                frameCount = 0;
+                lastFpsUpdate = now;
+            }
+        }
+        animate();
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
