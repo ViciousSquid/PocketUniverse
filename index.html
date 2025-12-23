@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cosmos Workshop</title>
+    <style>
+        :root {
+            --accent: #00ff88;
+            --accent2: #ff6600;
+            --bg: #0a0a0f;
+            --panel: rgba(15, 15, 20, 0.98);
+            --border: rgba(255,255,255,0.1);
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            background: var(--bg);
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Navigation Bar */
+        #navbar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 10px 20px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+        }
+        
+        #navbar .brand {
+            position: absolute;
+            left: 20px;
+            font-size: 14px;
+            font-weight: 300;
+            color: #666;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+        
+        .nav-btn {
+            padding: 12px 32px;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            background: transparent;
+            border: 2px solid #333;
+            color: #888;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        
+        .nav-btn:hover {
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            border-color: #555;
+        }
+        
+        .nav-btn.active {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+        
+        .nav-btn .badge {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            background: var(--accent2);
+            color: #000;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 10px;
+            display: none;
+        }
+        
+        .nav-btn.has-data .badge {
+            display: block;
+        }
+        
+        /* Content Area */
+        #content {
+            flex: 1;
+            position: relative;
+        }
+        
+        .editor-frame {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: none;
+        }
+        
+        .editor-frame.active {
+            display: block;
+        }
+        
+        /* Notification Toast */
+        #toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--panel);
+            border: 1px solid var(--accent);
+            padding: 15px 30px;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            z-index: 1000;
+            opacity: 0;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
+        }
+        
+        #toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+        
+        #toast .icon {
+            font-size: 20px;
+        }
+        
+        /* Transfer Indicator */
+        #transfer-indicator {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: var(--panel);
+            border: 1px solid var(--accent2);
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 0 20px rgba(255, 102, 0, 0.3);
+        }
+        
+        #transfer-indicator.show {
+            display: block;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(255, 102, 0, 0.3); }
+            50% { box-shadow: 0 0 30px rgba(255, 102, 0, 0.6); }
+        }
+        
+        #transfer-indicator .label {
+            color: var(--accent2);
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        #transfer-indicator .items {
+            margin-top: 5px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <nav id="navbar">
+        <span class="brand">Cosmos Workshop</span>
+        <button class="nav-btn active" data-editor="planet">
+            🌍 Planet
+            <span class="badge">0</span>
+        </button>
+        <button class="nav-btn" data-editor="system">
+            ☀️ System
+            <span class="badge">0</span>
+        </button>
+        <button class="nav-btn" data-editor="galaxy">
+            🌌 Galaxy
+            <span class="badge">0</span>
+        </button>
+    </nav>
+    
+    <div id="content">
+        <iframe id="planet-frame" class="editor-frame active" src="PlanetEditor.html?embedded=1"></iframe>
+        <iframe id="system-frame" class="editor-frame" src="SolarSystemEditor.html?embedded=1"></iframe>
+        <iframe id="galaxy-frame" class="editor-frame" src="GalaxyEditor.html?embedded=1"></iframe>
+    </div>
+    
+    <div id="toast">
+        <span class="icon">✓</span>
+        <span class="message">Ready</span>
+    </div>
+    
+    <div id="transfer-indicator">
+        <div class="label">📦 Staging Area</div>
+        <div class="items">No items</div>
+    </div>
+
+    <script>
+        // ============================================
+        // COSMOS WORKSHOP - Inter-Tool Communication Hub
+        // ============================================
+        
+        const STORAGE_KEY = 'cosmos_workshop_transfer';
+        
+        // State
+        const state = {
+            currentEditor: 'planet',
+            stagedPlanets: [],      // Planets ready to send to System
+            stagedSystems: [],      // Systems ready to send to Galaxy
+            planetCount: 0,
+            systemCount: 0,
+            galaxyCount: 0
+        };
+        
+        // DOM Elements
+        const frames = {
+            planet: document.getElementById('planet-frame'),
+            system: document.getElementById('system-frame'),
+            galaxy: document.getElementById('galaxy-frame')
+        };
+        
+        const navButtons = document.querySelectorAll('.nav-btn');
+        const toast = document.getElementById('toast');
+        const transferIndicator = document.getElementById('transfer-indicator');
+        
+        // ============================================
+        // Navigation
+        // ============================================
+        
+        function switchEditor(editor) {
+            state.currentEditor = editor;
+            
+            // Update nav buttons
+            navButtons.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.editor === editor);
+            });
+            
+            // Update frames
+            Object.entries(frames).forEach(([key, frame]) => {
+                frame.classList.toggle('active', key === editor);
+            });
+            
+            // Notify the frame it's now active
+            frames[editor].contentWindow.postMessage({
+                type: 'EDITOR_ACTIVATED'
+            }, '*');
+        }
+        
+        navButtons.forEach(btn => {
+            btn.addEventListener('click', () => switchEditor(btn.dataset.editor));
+        });
+        
+        // ============================================
+        // Toast Notifications
+        // ============================================
+        
+        function showToast(message, icon = '✓') {
+            toast.querySelector('.icon').textContent = icon;
+            toast.querySelector('.message').textContent = message;
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+        
+        // ============================================
+        // Transfer Indicator
+        // ============================================
+        
+        function updateTransferIndicator() {
+            const totalItems = state.stagedPlanets.length + state.stagedSystems.length;
+            
+            if (totalItems === 0) {
+                transferIndicator.classList.remove('show');
+                return;
+            }
+            
+            transferIndicator.classList.add('show');
+            
+            let itemsText = [];
+            if (state.stagedPlanets.length > 0) {
+                itemsText.push(`${state.stagedPlanets.length} planet(s)`);
+            }
+            if (state.stagedSystems.length > 0) {
+                itemsText.push(`${state.stagedSystems.length} system(s)`);
+            }
+            
+            transferIndicator.querySelector('.items').textContent = itemsText.join(', ');
+        }
+        
+        // ============================================
+        // Badge Updates
+        // ============================================
+        
+        function updateBadges() {
+            navButtons.forEach(btn => {
+                const editor = btn.dataset.editor;
+                const badge = btn.querySelector('.badge');
+                let count = 0;
+                
+                if (editor === 'planet') count = state.stagedPlanets.length;
+                else if (editor === 'system') count = state.stagedSystems.length;
+                
+                badge.textContent = count;
+                btn.classList.toggle('has-data', count > 0);
+            });
+        }
+        
+        // ============================================
+        // Message Handling
+        // ============================================
+        
+        window.addEventListener('message', (event) => {
+            const { type, data } = event.data || {};
+            
+            switch (type) {
+                case 'STAGE_PLANET':
+                    // Planet Editor wants to send a planet to System Editor
+                    state.stagedPlanets.push(data);
+                    updateTransferIndicator();
+                    updateBadges();
+                    showToast(`Staged "${data.seed}" for System Editor`, '📦');
+                    
+                    // Flash the System button
+                    const systemBtn = document.querySelector('[data-editor="system"]');
+                    systemBtn.style.animation = 'none';
+                    systemBtn.offsetHeight; // Trigger reflow
+                    systemBtn.style.animation = 'pulse 0.5s ease 3';
+                    break;
+                    
+                case 'STAGE_SYSTEM':
+                    // System Editor wants to send a system to Galaxy Editor
+                    state.stagedSystems.push(data);
+                    updateTransferIndicator();
+                    updateBadges();
+                    showToast(`Staged "${data.name}" for Galaxy Editor`, '📦');
+                    
+                    // Flash the Galaxy button
+                    const galaxyBtn = document.querySelector('[data-editor="galaxy"]');
+                    galaxyBtn.style.animation = 'none';
+                    galaxyBtn.offsetHeight;
+                    galaxyBtn.style.animation = 'pulse 0.5s ease 3';
+                    break;
+                    
+                case 'REQUEST_STAGED_PLANETS':
+                    // System Editor is asking for staged planets
+                    frames.system.contentWindow.postMessage({
+                        type: 'RECEIVE_PLANETS',
+                        data: state.stagedPlanets
+                    }, '*');
+                    break;
+                    
+                case 'REQUEST_STAGED_SYSTEMS':
+                    // Galaxy Editor is asking for staged systems
+                    frames.galaxy.contentWindow.postMessage({
+                        type: 'RECEIVE_SYSTEMS',
+                        data: state.stagedSystems
+                    }, '*');
+                    break;
+                    
+                case 'CLEAR_STAGED_PLANETS':
+                    state.stagedPlanets = [];
+                    updateTransferIndicator();
+                    updateBadges();
+                    showToast('Imported planets into System', '✓');
+                    break;
+                    
+                case 'CLEAR_STAGED_SYSTEMS':
+                    state.stagedSystems = [];
+                    updateTransferIndicator();
+                    updateBadges();
+                    showToast('Imported systems into Galaxy', '✓');
+                    break;
+                    
+                case 'TOAST':
+                    showToast(data.message, data.icon || '✓');
+                    break;
+            }
+        });
+        
+        // ============================================
+        // Keyboard Shortcuts
+        // ============================================
+        
+        document.addEventListener('keydown', (e) => {
+            // Ctrl+1/2/3 to switch editors
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === '1') { switchEditor('planet'); e.preventDefault(); }
+                if (e.key === '2') { switchEditor('system'); e.preventDefault(); }
+                if (e.key === '3') { switchEditor('galaxy'); e.preventDefault(); }
+            }
+        });
+        
+        // ============================================
+        // Initialize
+        // ============================================
+        
+        console.log('Cosmos Workshop initialized');
+        showToast('Welcome to Cosmos Workshop!', '🌌');
+    </script>
+</body>
+</html>
