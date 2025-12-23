@@ -5,3 +5,5 @@ creates planets - creates **ZIP files** with the prefix `sun_*` , `planet_*` or 
 
 ### SolarSystemEditor.html
 create a solar system by importing the `sun_*` , `planet_*` and `moon_*` files created by the PlanetEditor
+
+#### example planets, moons and suns can be found in the `planets` folder
