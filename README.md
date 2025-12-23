@@ -1,5 +1,6 @@
 # Pocket Universe
 
+Click the <img src="https://github.com/user-attachments/assets/b02aff25-545e-4095-8200-fb8e40326201" width="100"> button above to download the ZIP
 
 
 1. **PlanetEditor.html**  - creates `sun_*` , `planet_*` and `moon_*` **ZIP files**
