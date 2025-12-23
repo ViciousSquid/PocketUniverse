@@ -13,9 +13,11 @@ create a solar system by importing the `sun_*` , `planet_*` and `moon_*` files c
 
 ### Screenshots:
 
+* Planet Editor
+
 <img width="2135" height="1340" alt="image" src="https://github.com/user-attachments/assets/accfa8f9-ce17-450c-9acc-bad6f82aa424" />
-Planet Editor
+
+* Solar System Editor
 
 <img width="2152" height="1298" alt="image" src="https://github.com/user-attachments/assets/751789bb-c527-4ba6-99c7-f5b5d67d7fcd" />
-Solar System Editor
 
