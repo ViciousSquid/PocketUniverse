@@ -119,6 +119,7 @@
             </div>
             <div class="panel-content">
                 <button id="btnImport" class="action-btn">➕ Import Body (ZIP)</button>
+                <button id="btnExportSystem" class="action-btn" style="background:#264; border-color:#3a6; margin-top:5px;">💾 Export Solar System</button>
                 <input type="file" id="fileInput" accept=".zip">
                 <div id="bodyList" class="body-list">
                     </div>
@@ -720,6 +721,58 @@
             selectedBody = null;
             $('detailPanel').style.display = 'none';
             renderHierarchy();
+        };
+
+        // --- EXPORT SOLAR SYSTEM ---
+        $('btnExportSystem').onclick = async () => {
+            if (bodies.length === 0) {
+                alert('No bodies to export! Import some planets first.');
+                return;
+            }
+
+            const zip = new JSZip();
+            
+            // Find the sun to name the system
+            const sun = bodies.find(b => b.type === 'sun');
+            const systemName = sun ? sun.data.seed : 'Unknown';
+            
+            // Build hierarchy data
+            function buildHierarchy(body) {
+                return {
+                    file: `${body.type}_${body.data.seed}.zip`,
+                    orbitDistance: body.orbitDistance,
+                    orbitSpeed: body.orbitSpeed,
+                    children: body.childrenBodies.map(child => buildHierarchy(child))
+                };
+            }
+            
+            const rootBodies = bodies.filter(b => b.parentBody === null);
+            
+            const systemData = {
+                name: systemName + ' System',
+                version: '1.0',
+                bodies: rootBodies.map(b => buildHierarchy(b))
+            };
+            
+            zip.file("system_data.json", JSON.stringify(systemData, null, 2));
+            
+            // Add each body as a nested ZIP
+            for (const body of bodies) {
+                const bodyZip = new JSZip();
+                bodyZip.file("planet_data.json", JSON.stringify(body.data, null, 2));
+                
+                // Note: heightmap textures would need to be stored separately
+                // For now we just include the JSON data
+                
+                const bodyBlob = await bodyZip.generateAsync({ type: "blob" });
+                zip.file(`${body.type}_${body.data.seed}.zip`, bodyBlob);
+            }
+            
+            const blob = await zip.generateAsync({ type: "blob" });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `solarsystem_${systemName}.zip`;
+            link.click();
         };
 
         const clock = new THREE.Clock();
