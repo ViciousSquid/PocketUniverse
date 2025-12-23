@@ -76,6 +76,21 @@
         
         input[type=file] { display: none; }
 
+        /* Toggle switch */
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+        .toggle-switch { position: relative; width: 50px; height: 26px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #333; transition: .3s; border-radius: 26px;
+        }
+        .toggle-slider:before {
+            position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px;
+            background-color: #888; transition: .3s; border-radius: 50%;
+        }
+        input:checked + .toggle-slider { background-color: var(--accent); }
+        input:checked + .toggle-slider:before { transform: translateX(24px); background-color: #000; }
+
         /* Zoom indicator */
         #zoom-indicator {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
@@ -89,11 +104,6 @@
         }
         #zoom-indicator .zoom-btn:hover { background: var(--accent); color: #000; }
         #zoom-level { font-family: monospace; color: var(--accent); min-width: 60px; text-align: center; }
-
-        /* View mode toggle */
-        .view-toggle { display: flex; gap: 4px; margin-bottom: 10px; }
-        .view-toggle button { flex: 1; padding: 8px; font-size: 10px; }
-        .view-toggle button.active { background: var(--accent); color: #000; border-color: var(--accent); }
 
         /* WELCOME SCREEN */
         #welcome {
@@ -151,7 +161,7 @@
         </div>
         <div class="step">
             <div class="step-num">3</div>
-            <div><strong>Zoom & Explore:</strong> Use scroll wheel to zoom from galaxy view down to system detail.</div>
+            <div><strong>Toggle Detail View:</strong> Switch between icons and full 3D solar systems with orbiting planets!</div>
         </div>
         <div class="step">
             <div class="step-num">4</div>
@@ -185,7 +195,18 @@
                     </div>
                 </div>
 
-                <h3>Galaxy Tools</h3>
+                <h3>View Mode</h3>
+                <div class="toggle-row">
+                    <label>Show Detailed Systems</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggleDetailView">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="control-row"><label>System Scale</label><span id="systemScaleVal" class="val">3.0</span></div>
+                <input type="range" id="systemScale" min="1" max="10" step="0.5" value="3">
+
+                <h3>Galaxy Shape</h3>
                 <div class="control-row"><label>Galaxy Name</label></div>
                 <input type="text" id="galaxyName" value="Andromeda" placeholder="Galaxy Name">
                 
@@ -276,21 +297,12 @@
 
         // --- GALAXY CORE ---
         const coreGeo = new THREE.SphereGeometry(8, 32, 32);
-        const coreMat = new THREE.MeshBasicMaterial({ 
-            color: 0xffffcc, 
-            transparent: true, 
-            opacity: 0.9 
-        });
+        const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffcc, transparent: true, opacity: 0.9 });
         const galaxyCore = new THREE.Mesh(coreGeo, coreMat);
         scene.add(galaxyCore);
 
-        // Core glow
         const glowGeo = new THREE.SphereGeometry(15, 32, 32);
-        const glowMat = new THREE.MeshBasicMaterial({ 
-            color: 0xffcc66, 
-            transparent: true, 
-            opacity: 0.3 
-        });
+        const glowMat = new THREE.MeshBasicMaterial({ color: 0xffcc66, transparent: true, opacity: 0.3 });
         scene.add(new THREE.Mesh(glowGeo, glowMat));
 
         // --- BACKGROUND STARS ---
@@ -315,7 +327,6 @@
             for (let i = 0; i < count; i++) {
                 const arm = Math.floor(Math.random() * spiralArmCount);
                 const armAngle = (arm / spiralArmCount) * Math.PI * 2;
-                
                 const dist = Math.pow(Math.random(), 0.5) * 400;
                 const spiralAngle = armAngle + dist * spiralTightness * 0.02;
                 const spread = (Math.random() - 0.5) * (30 + dist * 0.15);
@@ -324,7 +335,6 @@
                 positions[i * 3 + 1] = (Math.random() - 0.5) * (5 + dist * 0.02);
                 positions[i * 3 + 2] = Math.sin(spiralAngle) * dist + (Math.random() - 0.5) * spread;
                 
-                // Color gradient: blue-white core to reddish outer
                 const t = dist / 400;
                 colors[i * 3] = 0.7 + t * 0.3;
                 colors[i * 3 + 1] = 0.7 - t * 0.4;
@@ -335,20 +345,14 @@
             geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
             
-            const mat = new THREE.PointsMaterial({ 
-                size: 0.8, 
-                transparent: true, 
-                opacity: 0.6,
-                vertexColors: true,
-                blending: THREE.AdditiveBlending
-            });
-            
-            spiralParticles = new THREE.Points(geo, mat);
+            spiralParticles = new THREE.Points(geo, new THREE.PointsMaterial({ 
+                size: 0.8, transparent: true, opacity: 0.6, vertexColors: true, blending: THREE.AdditiveBlending
+            }));
             scene.add(spiralParticles);
         }
         generateSpiralDust();
 
-        // --- SHADER FOR CELESTIAL BODIES ---
+        // --- SHADER CODE ---
         const shaderUtils = `
             vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
             vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -357,51 +361,53 @@
             float snoise(vec3 v) {
                 const vec2 C = vec2(1.0/6.0, 1.0/3.0);
                 const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-                vec3 i  = floor(v + dot(v, C.yyy));
+                vec3 i = floor(v + dot(v, C.yyy));
                 vec3 x0 = v - i + dot(i, C.xxx);
                 vec3 g = step(x0.yzx, x0.xyz);
                 vec3 l = 1.0 - g;
-                vec3 i1 = min( g.xyz, l.zxy );
-                vec3 i2 = max( g.xyz, l.zxy );
+                vec3 i1 = min(g.xyz, l.zxy);
+                vec3 i2 = max(g.xyz, l.zxy);
                 vec3 x1 = x0 - i1 + C.xxx;
                 vec3 x2 = x0 - i2 + C.yyy;
                 vec3 x3 = x0 - D.yyy;
                 i = mod289(i);
-                vec4 p = permute( permute( permute(
-                    i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
-                    + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
-                    + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+                vec4 p = permute(permute(permute(
+                    i.z + vec4(0.0, i1.z, i2.z, 1.0))
+                    + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+                    + i.x + vec4(0.0, i1.x, i2.x, 1.0));
                 float n_ = 0.142857142857;
-                vec3  ns = n_ * D.wyz - D.xzx;
+                vec3 ns = n_ * D.wyz - D.xzx;
                 vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
                 vec4 x_ = floor(j * ns.z);
-                vec4 y_ = floor(j - 7.0 * x_ );
-                vec4 x = x_ *ns.x + ns.yyyy;
-                vec4 y = y_ *ns.x + ns.yyyy;
+                vec4 y_ = floor(j - 7.0 * x_);
+                vec4 x = x_ * ns.x + ns.yyyy;
+                vec4 y = y_ * ns.x + ns.yyyy;
                 vec4 h = 1.0 - abs(x) - abs(y);
-                vec4 b0 = vec4( x.xy, y.xy );
-                vec4 b1 = vec4( x.zw, y.zw );
-                vec4 s0 = floor(b0)*2.0 + 1.0;
-                vec4 s1 = floor(b1)*2.0 + 1.0;
+                vec4 b0 = vec4(x.xy, y.xy);
+                vec4 b1 = vec4(x.zw, y.zw);
+                vec4 s0 = floor(b0) * 2.0 + 1.0;
+                vec4 s1 = floor(b1) * 2.0 + 1.0;
                 vec4 sh = -step(h, vec4(0.0));
-                vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
-                vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
-                vec3 p0 = vec3(a0.xy,h.x);
-                vec3 p1 = vec3(a0.zw,h.y);
-                vec3 p2 = vec3(a1.xy,h.z);
-                vec3 p3 = vec3(a1.zw,h.w);
+                vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+                vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+                vec3 p0 = vec3(a0.xy, h.x);
+                vec3 p1 = vec3(a0.zw, h.y);
+                vec3 p2 = vec3(a1.xy, h.z);
+                vec3 p3 = vec3(a1.zw, h.w);
                 vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
                 p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
                 vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
                 m = m * m;
-                return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
+                return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
             }
             float fbm(vec3 p, int octaves, float persistence, float lacunarity) {
-                float total = 0.0; float amplitude = 1.0; float frequency = 1.0; float maxValue = 0.0;
-                for(int i=0; i<20; i++) {
+                float total = 0.0, amplitude = 1.0, frequency = 1.0, maxValue = 0.0;
+                for(int i = 0; i < 20; i++) {
                     if (i >= octaves) break;
                     total += snoise(p * frequency) * amplitude;
-                    maxValue += amplitude; amplitude *= persistence; frequency *= lacunarity;
+                    maxValue += amplitude;
+                    amplitude *= persistence;
+                    frequency *= lacunarity;
                 }
                 return total / maxValue;
             }
@@ -419,13 +425,10 @@
             uniform float shapeFactor;
             uniform float isSun;
             uniform float time;
-
             varying vec3 vPos;
             varying float vElevation;
             varying float vSunNoise;
-
             ${shaderUtils}
-
             void main() {
                 vec3 sphereP = normalize(position);
                 vec3 absP = abs(position);
@@ -433,26 +436,20 @@
                 vec3 boxP = position / maxC;
                 vec3 baseDir = mix(sphereP, boxP, shapeFactor);
                 vec3 basePos = baseDir * radius;
-
                 vec3 warpPos = sphereP * 0.5 + seedOffset;
                 if (isSun > 0.5) warpPos += vec3(time * 0.1);
-
                 float warp = snoise(warpPos) * warpScale;
                 vec3 noisePos = (sphereP + vec3(warp)) * frequency + seedOffset;
-                if (isSun > 0.5) noisePos += vec3(time * 0.2, -time*0.1, time*0.1);
-
+                if (isSun > 0.5) noisePos += vec3(time * 0.2, -time * 0.1, time * 0.1);
                 float n = fbm(noisePos, octaves, persistence, 2.0);
                 float r = 1.0 - abs(snoise(noisePos));
                 r = pow(r, 3.0);
                 float finalNoise = mix(n, r, ridge);
-
                 float displacement = finalNoise * heightScale;
                 vec3 finalPos = basePos + normalize(baseDir) * displacement;
-
                 vPos = finalPos;
                 vElevation = finalNoise;
                 vSunNoise = finalNoise;
-
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(finalPos, 1.0);
             }
         `;
@@ -467,13 +464,10 @@
             uniform vec3 grassColor;
             uniform vec3 rockColor;
             uniform vec3 snowColor;
-
             varying vec3 vPos;
             varying float vElevation;
             varying float vSunNoise;
-
             ${shaderUtils}
-
             void main() {
                 if (isSun > 0.5) {
                     float heat = vSunNoise * 0.5 + 0.5;
@@ -485,10 +479,8 @@
                     gl_FragColor = vec4(sunColor, 1.0);
                     return;
                 }
-
                 float e = vElevation;
                 vec3 color;
-                
                 if (e < oceanLevel) {
                     color = oceanColor;
                 } else if (e < oceanLevel + 0.05) {
@@ -499,12 +491,9 @@
                 } else {
                     color = snowColor;
                 }
-
-                // Simple lighting
                 vec3 lightDir = normalize(vec3(1.0, 1.0, 0.5));
                 vec3 normal = normalize(vPos);
                 float diff = max(dot(normal, lightDir), 0.3);
-                
                 gl_FragColor = vec4(color * diff, 1.0);
             }
         `;
@@ -523,9 +512,9 @@
             h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
             h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
             h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
-            return [(h1^h2^h3^h4)>>>0];
+            return [(h1 ^ h2 ^ h3 ^ h4) >>> 0];
         }
-        
+
         function mulberry32(a) {
             return function() {
                 var t = a += 0x6D2B79F5;
@@ -535,17 +524,18 @@
             }
         }
 
-        // --- CELESTIAL BODY CLASS (for detail view) ---
+        // --- CELESTIAL BODY CLASS ---
         class CelestialBody {
-            constructor(data, texture) {
+            constructor(data, parentSystem) {
                 this.data = data;
                 this.type = data.type || 'planet';
+                this.parentSystem = parentSystem;
                 
                 const p = data.params;
                 const c = data.colors;
                 const seedHash = cyrb128(data.seed);
                 const rng = mulberry32(seedHash[0]);
-                const seedOffset = new THREE.Vector3(rng()*100, rng()*100, rng()*100);
+                const seedOffset = new THREE.Vector3(rng() * 100, rng() * 100, rng() * 100);
 
                 this.material = new THREE.ShaderMaterial({
                     uniforms: {
@@ -572,9 +562,67 @@
                     fragmentShader: bodyFragmentShader
                 });
 
-                const geo = new THREE.BoxGeometry(1, 1, 1, 64, 64, 64);
+                const geo = new THREE.BoxGeometry(1, 1, 1, 32, 32, 32);
                 this.mesh = new THREE.Mesh(geo, this.material);
-                this.mesh.scale.setScalar(parseFloat(p.radius));
+                
+                const baseRadius = parseFloat(p.radius);
+                this.baseScale = baseRadius;
+                
+                // Orbital properties
+                this.orbitDistance = 0;
+                this.orbitSpeed = 0.3;
+                this.orbitAngle = rng() * Math.PI * 2;
+                
+                // Pivot for orbital motion
+                this.pivot = new THREE.Group();
+                this.holder = new THREE.Group();
+                this.pivot.add(this.holder);
+                this.holder.add(this.mesh);
+                
+                // Orbit ring
+                const ringGeo = new THREE.RingGeometry(1, 1.02, 64);
+                const ringMat = new THREE.MeshBasicMaterial({ 
+                    color: 0x444444, side: THREE.DoubleSide, transparent: true, opacity: 0.3 
+                });
+                this.orbitRing = new THREE.Mesh(ringGeo, ringMat);
+                this.orbitRing.rotation.x = Math.PI / 2;
+                
+                this.childBodies = [];
+            }
+
+            setScale(scaleFactor) {
+                this.mesh.scale.setScalar(this.baseScale * scaleFactor);
+            }
+
+            update(dt, scaleFactor) {
+                this.material.uniforms.time.value += dt;
+                this.mesh.rotation.y += dt * 0.3;
+
+                if (this.orbitDistance > 0.1) {
+                    this.orbitAngle += this.orbitSpeed * dt * 0.3;
+                    this.pivot.rotation.y = this.orbitAngle;
+                    this.holder.position.set(this.orbitDistance * scaleFactor, 0, 0);
+                    this.orbitRing.visible = true;
+                    this.orbitRing.scale.setScalar(this.orbitDistance * scaleFactor);
+                } else {
+                    this.holder.position.set(0, 0, 0);
+                    this.orbitRing.visible = false;
+                }
+                
+                // Update child bodies (moons)
+                for (const child of this.childBodies) {
+                    child.update(dt, scaleFactor * 0.5);
+                }
+            }
+
+            dispose() {
+                this.mesh.geometry.dispose();
+                this.material.dispose();
+                this.orbitRing.geometry.dispose();
+                this.orbitRing.material.dispose();
+                for (const child of this.childBodies) {
+                    child.dispose();
+                }
             }
         }
 
@@ -583,23 +631,23 @@
             constructor(id, name = 'Unknown System') {
                 this.id = id;
                 this.name = name;
-                this.bodies = []; // Array of body data
-                this.bodyTextures = new Map(); // Map of body seed -> texture
+                this.bodies = [];
+                this.bodyTextures = new Map();
+                this.celestialBodies = [];
                 
-                // Galactic position (polar coordinates)
                 this.distanceFromCore = 100 + Math.random() * 200;
                 this.angle = Math.random() * Math.PI * 2;
-                this.spiralArm = -1; // -1 = free position
+                this.spiralArm = -1;
                 
-                // 3D representation
                 this.group = new THREE.Group();
+                this.detailGroup = new THREE.Group();
+                this.detailGroup.visible = false;
+                this.group.add(this.detailGroup);
                 
-                // System marker (visible from galaxy view)
+                // Icon marker
                 const markerGeo = new THREE.SphereGeometry(2, 16, 16);
                 this.markerMaterial = new THREE.MeshBasicMaterial({ 
-                    color: 0xffcc00, 
-                    transparent: true, 
-                    opacity: 0.9 
+                    color: 0xffcc00, transparent: true, opacity: 0.9 
                 });
                 this.marker = new THREE.Mesh(markerGeo, this.markerMaterial);
                 this.group.add(this.marker);
@@ -607,16 +655,13 @@
                 // Selection ring
                 const ringGeo = new THREE.RingGeometry(3, 3.5, 32);
                 const ringMat = new THREE.MeshBasicMaterial({ 
-                    color: 0x00ff88, 
-                    side: THREE.DoubleSide, 
-                    transparent: true, 
-                    opacity: 0 
+                    color: 0x00ff88, side: THREE.DoubleSide, transparent: true, opacity: 0 
                 });
                 this.selectionRing = new THREE.Mesh(ringGeo, ringMat);
                 this.selectionRing.rotation.x = Math.PI / 2;
                 this.group.add(this.selectionRing);
                 
-                // Label sprite
+                // Label
                 this.labelSprite = this.createLabel(name);
                 this.labelSprite.position.y = 5;
                 this.group.add(this.labelSprite);
@@ -638,11 +683,7 @@
                 ctx.fillText(text, 128, 40);
                 
                 const texture = new THREE.CanvasTexture(canvas);
-                const mat = new THREE.SpriteMaterial({ 
-                    map: texture, 
-                    transparent: true,
-                    opacity: 0.8
-                });
+                const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.8 });
                 const sprite = new THREE.Sprite(mat);
                 sprite.scale.set(20, 5, 1);
                 return sprite;
@@ -650,6 +691,7 @@
             
             updateLabel() {
                 this.group.remove(this.labelSprite);
+                this.labelSprite.material.map.dispose();
                 this.labelSprite.material.dispose();
                 this.labelSprite = this.createLabel(this.name);
                 this.labelSprite.position.y = 5;
@@ -658,11 +700,8 @@
             
             addBody(data, texture = null) {
                 this.bodies.push(data);
-                if (texture) {
-                    this.bodyTextures.set(data.seed, texture);
-                }
+                if (texture) this.bodyTextures.set(data.seed, texture);
                 
-                // Update marker color based on sun color if present
                 const sun = this.bodies.find(b => b.type === 'sun');
                 if (sun) {
                     this.markerMaterial.color.set(sun.colors.ocean);
@@ -671,27 +710,97 @@
                 }
             }
             
+            buildDetailView(scaleFactor) {
+                this.clearDetailView();
+                
+                const sortedBodies = [...this.bodies].sort((a, b) => {
+                    const order = { sun: 0, planet: 1, moon: 2 };
+                    return (order[a.type] || 1) - (order[b.type] || 1);
+                });
+                
+                let planetIndex = 0;
+                let lastPlanetBody = null;
+                let moonIndex = 0;
+                
+                for (const bodyData of sortedBodies) {
+                    const body = new CelestialBody(bodyData, this);
+                    body.setScale(scaleFactor);
+                    
+                    if (bodyData.type === 'sun') {
+                        body.orbitDistance = 0;
+                        this.detailGroup.add(body.pivot);
+                        this.celestialBodies.push(body);
+                    } else if (bodyData.type === 'planet') {
+                        body.orbitDistance = 4 + planetIndex * 5;
+                        body.orbitSpeed = 0.5 / (planetIndex + 1);
+                        this.detailGroup.add(body.pivot);
+                        this.detailGroup.add(body.orbitRing);
+                        this.celestialBodies.push(body);
+                        lastPlanetBody = body;
+                        planetIndex++;
+                        moonIndex = 0;
+                    } else if (bodyData.type === 'moon' && lastPlanetBody) {
+                        body.orbitDistance = 1.5 + moonIndex * 1.2;
+                        body.orbitSpeed = 1.5;
+                        body.setScale(scaleFactor * 0.4);
+                        lastPlanetBody.holder.add(body.pivot);
+                        lastPlanetBody.holder.add(body.orbitRing);
+                        lastPlanetBody.childBodies.push(body);
+                        moonIndex++;
+                    }
+                }
+            }
+            
+            clearDetailView() {
+                for (const body of this.celestialBodies) {
+                    body.pivot.removeFromParent();
+                    body.orbitRing.removeFromParent();
+                    body.dispose();
+                }
+                this.celestialBodies = [];
+            }
+            
+            setDetailMode(enabled, scaleFactor) {
+                this.marker.visible = !enabled;
+                this.detailGroup.visible = enabled;
+                
+                if (enabled && this.celestialBodies.length === 0) {
+                    this.buildDetailView(scaleFactor);
+                } else if (!enabled) {
+                    this.clearDetailView();
+                }
+            }
+            
+            updateDetailScale(scaleFactor) {
+                if (this.detailGroup.visible && this.bodies.length > 0) {
+                    this.clearDetailView();
+                    this.buildDetailView(scaleFactor);
+                }
+            }
+            
             updatePosition() {
                 let x, z;
-                
                 if (this.spiralArm >= 0) {
-                    // Snap to spiral arm
                     const armAngle = (this.spiralArm / spiralArmCount) * Math.PI * 2;
                     const spiralAngle = armAngle + this.distanceFromCore * spiralTightness * 0.02;
                     x = Math.cos(spiralAngle) * this.distanceFromCore;
                     z = Math.sin(spiralAngle) * this.distanceFromCore;
                 } else {
-                    // Free position
                     x = Math.cos(this.angle) * this.distanceFromCore;
                     z = Math.sin(this.angle) * this.distanceFromCore;
                 }
-                
                 this.group.position.set(x, 0, z);
             }
             
             setSelected(selected) {
                 this.selectionRing.material.opacity = selected ? 0.8 : 0;
                 this.marker.scale.setScalar(selected ? 1.3 : 1);
+            }
+            
+            update(dt, scaleFactor) {
+                for (const body of this.celestialBodies) {
+                    body.update(dt, scaleFactor);
+                }
             }
             
             getExportData() {
@@ -705,11 +814,13 @@
             }
             
             dispose() {
+                this.clearDetailView();
                 scene.remove(this.group);
                 this.marker.geometry.dispose();
                 this.markerMaterial.dispose();
                 this.selectionRing.geometry.dispose();
                 this.selectionRing.material.dispose();
+                this.labelSprite.material.map.dispose();
                 this.labelSprite.material.dispose();
             }
         }
@@ -718,17 +829,35 @@
         const solarSystems = [];
         let selectedSystem = null;
         let systemCounter = 0;
-        let pendingBodies = []; // Bodies waiting to be assembled into a system
+        let detailViewEnabled = false;
+        let systemScale = 3.0;
 
         // --- UI HELPERS ---
         const $ = (id) => document.getElementById(id);
         const welcomeEl = $('welcome');
 
+        // --- DETAIL VIEW TOGGLE ---
+        $('toggleDetailView').onchange = (e) => {
+            detailViewEnabled = e.target.checked;
+            for (const sys of solarSystems) {
+                sys.setDetailMode(detailViewEnabled, systemScale);
+            }
+        };
+
+        $('systemScale').oninput = (e) => {
+            systemScale = parseFloat(e.target.value);
+            $('systemScaleVal').textContent = systemScale.toFixed(1);
+            if (detailViewEnabled) {
+                for (const sys of solarSystems) {
+                    sys.updateDetailScale(systemScale);
+                }
+            }
+        };
+
         // --- IMPORT HANDLERS ---
         $('btnImportSystem').onclick = () => $('fileInputSystem').click();
         $('btnImportBodies').onclick = () => $('fileInputBodies').click();
 
-        // Import a complete solar system ZIP
         $('fileInputSystem').onchange = async (e) => {
             const files = Array.from(e.target.files);
             for (const file of files) {
@@ -737,13 +866,10 @@
             $('fileInputSystem').value = '';
         };
 
-        // Import individual body ZIPs to build a system
         $('fileInputBodies').onchange = async (e) => {
             const files = Array.from(e.target.files);
-            
             if (files.length === 0) return;
             
-            // Create a new system from these bodies
             const system = new SolarSystem(systemCounter++, 'New System');
             
             for (const file of files) {
@@ -765,6 +891,10 @@
                 }
             }
             
+            if (detailViewEnabled) {
+                system.setDetailMode(true, systemScale);
+            }
+            
             solarSystems.push(system);
             updateUI();
             selectSystem(system);
@@ -776,15 +906,12 @@
             try {
                 const zip = await JSZip.loadAsync(file);
                 
-                // Check if this is a galaxy file or solar system file
                 const galaxyFile = zip.file("galaxy_data.json");
                 if (galaxyFile) {
-                    // It's a galaxy file - import all systems
                     await importGalaxyZip(zip);
                     return;
                 }
                 
-                // Check for solar system manifest
                 const manifestFile = zip.file("system_data.json");
                 if (manifestFile) {
                     const manifestStr = await manifestFile.async("string");
@@ -795,7 +922,6 @@
                     system.angle = manifest.angle || 0;
                     system.spiralArm = manifest.spiralArm ?? -1;
                     
-                    // Load each body
                     for (const bodyInfo of manifest.bodies) {
                         const bodyFile = zip.file(bodyInfo.file);
                         if (bodyFile) {
@@ -815,9 +941,9 @@
                     }
                     
                     system.updatePosition();
+                    if (detailViewEnabled) system.setDetailMode(true, systemScale);
                     solarSystems.push(system);
                 } else {
-                    // Try to load as individual body ZIP (create single-body system)
                     const jsonFile = zip.file("planet_data.json");
                     if (jsonFile) {
                         const jsonStr = await jsonFile.async("string");
@@ -833,6 +959,7 @@
                         }
                         
                         system.addBody(data, texture);
+                        if (detailViewEnabled) system.setDetailMode(true, systemScale);
                         solarSystems.push(system);
                     }
                 }
@@ -867,6 +994,7 @@
                 }
                 
                 system.updatePosition();
+                if (detailViewEnabled) system.setDetailMode(true, systemScale);
                 solarSystems.push(system);
             }
             
@@ -875,10 +1003,7 @@
 
         // --- SYSTEM SELECTION ---
         function selectSystem(system) {
-            if (selectedSystem) {
-                selectedSystem.setSelected(false);
-            }
-            
+            if (selectedSystem) selectedSystem.setSelected(false);
             selectedSystem = system;
             
             if (system) {
@@ -904,7 +1029,6 @@
             const selector = $('armSelector');
             selector.innerHTML = '';
             
-            // Free position button
             const freeBtn = document.createElement('button');
             freeBtn.className = 'arm-btn' + (system.spiralArm === -1 ? ' active' : '');
             freeBtn.textContent = 'Free';
@@ -915,7 +1039,6 @@
             };
             selector.appendChild(freeBtn);
             
-            // Arm buttons
             for (let i = 0; i < spiralArmCount; i++) {
                 const btn = document.createElement('button');
                 btn.className = 'arm-btn' + (system.spiralArm === i ? ' active' : '');
@@ -942,12 +1065,8 @@
                 const div = document.createElement('div');
                 div.className = 'system-item';
                 div.style.cursor = 'default';
-                
                 const icon = body.type === 'sun' ? '☀️' : body.type === 'moon' ? '🌙' : '🪐';
-                div.innerHTML = `
-                    <span>${icon} ${body.seed}</span>
-                    <span style="font-size:10px; color:#666;">${body.type}</span>
-                `;
+                div.innerHTML = `<span>${icon} ${body.seed}</span><span style="font-size:10px; color:#666;">${body.type}</span>`;
                 list.appendChild(div);
             }
         }
@@ -1043,13 +1162,11 @@
 
         $('btnDeleteSystem').onclick = () => {
             if (!selectedSystem) return;
-            
             const idx = solarSystems.indexOf(selectedSystem);
             if (idx > -1) {
                 selectedSystem.dispose();
                 solarSystems.splice(idx, 1);
             }
-            
             selectedSystem = null;
             $('detailPanel').style.display = 'none';
             updateUI();
@@ -1058,14 +1175,12 @@
         // --- EXPORT ---
         $('btnExportGalaxy').onclick = async () => {
             const zip = new JSZip();
-            
             const galaxyData = {
                 name: $('galaxyName').value,
                 spiralArmCount: spiralArmCount,
                 spiralTightness: spiralTightness,
                 systems: solarSystems.map(s => s.getExportData())
             };
-            
             zip.file("galaxy_data.json", JSON.stringify(galaxyData, null, 2));
             
             const blob = await zip.generateAsync({ type: "blob" });
@@ -1104,12 +1219,11 @@
 
         controls.addEventListener('change', updateZoomDisplay);
 
-        // --- RAYCASTING FOR SELECTION ---
+        // --- RAYCASTING ---
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
         renderer.domElement.addEventListener('click', (e) => {
-            // Ignore if clicking on UI
             if (e.target !== renderer.domElement) return;
             
             mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
@@ -1117,19 +1231,22 @@
             
             raycaster.setFromCamera(mouse, camera);
             
-            const markers = solarSystems.map(s => s.marker);
-            const intersects = raycaster.intersectObjects(markers);
+            const clickables = [];
+            for (const sys of solarSystems) {
+                clickables.push({ obj: sys.marker, sys });
+                for (const body of sys.celestialBodies) {
+                    clickables.push({ obj: body.mesh, sys });
+                }
+            }
+            
+            const intersects = raycaster.intersectObjects(clickables.map(c => c.obj));
             
             if (intersects.length > 0) {
-                const clickedMarker = intersects[0].object;
-                const clickedSystem = solarSystems.find(s => s.marker === clickedMarker);
-                if (clickedSystem) {
-                    selectSystem(clickedSystem);
-                }
+                const hit = clickables.find(c => c.obj === intersects[0].object);
+                if (hit) selectSystem(hit.sys);
             }
         });
 
-        // Double-click to focus on system
         renderer.domElement.addEventListener('dblclick', (e) => {
             if (e.target !== renderer.domElement) return;
             
@@ -1138,15 +1255,20 @@
             
             raycaster.setFromCamera(mouse, camera);
             
-            const markers = solarSystems.map(s => s.marker);
-            const intersects = raycaster.intersectObjects(markers);
+            const clickables = [];
+            for (const sys of solarSystems) {
+                clickables.push({ obj: sys.marker, sys });
+                for (const body of sys.celestialBodies) {
+                    clickables.push({ obj: body.mesh, sys });
+                }
+            }
+            
+            const intersects = raycaster.intersectObjects(clickables.map(c => c.obj));
             
             if (intersects.length > 0) {
-                const clickedMarker = intersects[0].object;
-                const clickedSystem = solarSystems.find(s => s.marker === clickedMarker);
-                if (clickedSystem) {
-                    // Animate camera to focus on system
-                    const pos = clickedSystem.group.position.clone();
+                const hit = clickables.find(c => c.obj === intersects[0].object);
+                if (hit) {
+                    const pos = hit.sys.group.position.clone();
                     controls.target.copy(pos);
                     camera.position.set(pos.x, pos.y + 30, pos.z + 50);
                     updateZoomDisplay();
@@ -1163,15 +1285,18 @@
             const dt = clock.getDelta();
             const time = clock.getElapsedTime();
             
-            // Rotate galaxy core glow
             galaxyCore.rotation.y += dt * 0.1;
             
-            // Subtle spiral rotation
             if (spiralParticles) {
                 spiralParticles.rotation.y += dt * 0.002;
             }
             
-            // Pulse selected system
+            if (detailViewEnabled) {
+                for (const sys of solarSystems) {
+                    sys.update(dt, systemScale);
+                }
+            }
+            
             if (selectedSystem) {
                 const pulse = 0.8 + Math.sin(time * 4) * 0.2;
                 selectedSystem.selectionRing.material.opacity = pulse;
@@ -1184,7 +1309,6 @@
         animate();
         updateZoomDisplay();
 
-        // --- RESIZE HANDLER ---
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
