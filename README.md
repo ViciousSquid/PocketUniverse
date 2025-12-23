@@ -4,6 +4,8 @@ Click <a href="https://github.com/ViciousSquid/PocketUniverse/archive/refs/heads
   <img src="https://github.com/user-attachments/assets/b02aff25-545e-4095-8200-fb8e40326201" width="100" alt="Download ZIP">
 </a> to download the ZIP
 
+#### Run the files in your web browser!
+
 
 1. **PlanetEditor.html**  - creates `sun_*` , `planet_*` and `moon_*` **ZIP files**
 
