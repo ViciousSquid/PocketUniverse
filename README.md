@@ -1,6 +1,6 @@
 # Pocket Universe
 
-## Design every planet across multiple solar systems, or procedurally generate.
+### Design every planet across multiple solar systems, or procedurally generate.
 ### Inspired by Maxis SPORE (2008)
 
 Click <a href="https://github.com/ViciousSquid/PocketUniverse/archive/refs/heads/main.zip">
