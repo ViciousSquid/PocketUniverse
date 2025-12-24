@@ -6,7 +6,7 @@ Click <a href="https://github.com/ViciousSquid/PocketUniverse/archive/refs/heads
 
 #### Run index.html in your web browser!
 
-1. **index.html** - main entry point. Allows real-time data transfer between the editors
+1. **index.html** - main entry point.
 
    editors can be ran independently:
 
