@@ -208,6 +208,11 @@
             </div>
             <div class="panel-content">
                 <h3>Import</h3>
+                <!-- Embedded Mode: Receive from System Editor -->
+                <button id="btnReceiveSystems" class="action-btn" style="display:none; background: linear-gradient(135deg, #9933ff, #cc66ff); color: #fff; border: none; font-weight: bold; margin-bottom: 8px;">
+                    📥 Import from System Editor <span id="stagedSystemCount" style="background:#000;color:#9933ff;padding:2px 6px;border-radius:10px;margin-left:5px;font-size:10px;">0</span>
+                </button>
+                
                 <button id="btnImportSystem" class="action-btn">📦 Import Solar System</button>
                 <button id="btnImportBodies" class="action-btn secondary">⭐ Import Bodies (Build System)</button>
                 <button id="btnRandomSystem" class="action-btn" style="background: #442; border-color: #664;">🎲 Generate Random System</button>
@@ -555,6 +560,126 @@
                 return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
             }
         }
+
+        // ============================================
+        // PLANET LIBRARY SYSTEM
+        // ============================================
+        
+        const planetLibrary = {
+            suns: [],
+            planets: [],
+            moons: [],
+            loaded: false,
+            loading: false
+        };
+        
+        async function loadPlanetLibrary() {
+            if (planetLibrary.loading || planetLibrary.loaded) return;
+            planetLibrary.loading = true;
+            
+            try {
+                // Try to fetch manifest from planets folder
+                const manifestResponse = await fetch('planets/manifest.json');
+                if (!manifestResponse.ok) {
+                    console.log('No planets/manifest.json found - using procedural generation');
+                    planetLibrary.loading = false;
+                    return;
+                }
+                
+                const manifest = await manifestResponse.json();
+                console.log(`Loading planet library: ${manifest.name}`);
+                
+                // Load each body ZIP file
+                for (const filename of manifest.bodies) {
+                    try {
+                        const zipResponse = await fetch(`planets/${filename}`);
+                        if (!zipResponse.ok) continue;
+                        
+                        const zipBlob = await zipResponse.blob();
+                        const zip = await JSZip.loadAsync(zipBlob);
+                        const jsonStr = await zip.file("planet_data.json").async("string");
+                        const data = JSON.parse(jsonStr);
+                        
+                        // Load heightmap if present
+                        let heightmapBase64 = null;
+                        const imgFile = zip.file("heightmap.png");
+                        if (imgFile) {
+                            heightmapBase64 = await imgFile.async("base64");
+                        }
+                        
+                        const bodyEntry = { data, heightmapBase64, filename };
+                        
+                        // Sort into appropriate category
+                        if (data.type === 'sun') {
+                            planetLibrary.suns.push(bodyEntry);
+                        } else if (data.type === 'moon') {
+                            planetLibrary.moons.push(bodyEntry);
+                        } else {
+                            planetLibrary.planets.push(bodyEntry);
+                        }
+                        
+                        console.log(`  Loaded: ${filename} (${data.type})`);
+                    } catch (err) {
+                        console.warn(`Failed to load ${filename}:`, err);
+                    }
+                }
+                
+                planetLibrary.loaded = true;
+                console.log(`Library loaded: ${planetLibrary.suns.length} suns, ${planetLibrary.planets.length} planets, ${planetLibrary.moons.length} moons`);
+                
+                // Update UI to show library status
+                updateLibraryStatus();
+                
+            } catch (err) {
+                console.log('Planet library not available:', err.message);
+                updateLibraryStatus(); // Still update to show "procedural" mode
+            }
+            
+            planetLibrary.loading = false;
+        }
+        
+        function updateLibraryStatus() {
+            const btn = $('btnRandomSystem');
+            if (!btn) return;
+            
+            const suns = planetLibrary.suns.length;
+            const planets = planetLibrary.planets.length;
+            const moons = planetLibrary.moons.length;
+            const total = suns + planets + moons;
+            
+            if (total > 0) {
+                // Show library count with breakdown on hover
+                btn.innerHTML = `🎲 Generate System <span style="font-size:9px;opacity:0.7;">(${total} in library)</span>`;
+                btn.title = `Library: ${suns} sun(s), ${planets} planet(s), ${moons} moon(s)\nMissing types will be procedurally generated.`;
+                btn.style.borderColor = '#00ff88';
+            } else {
+                // No library - purely procedural
+                btn.innerHTML = `🎲 Generate Random System`;
+                btn.title = `No planets/ folder found.\nAll bodies will be procedurally generated.`;
+            }
+        }
+        
+        function getLibraryBody(type, rng) {
+            let pool;
+            if (type === 'sun') pool = planetLibrary.suns;
+            else if (type === 'moon') pool = planetLibrary.moons;
+            else pool = planetLibrary.planets;
+            
+            if (pool.length === 0) return null;
+            
+            // Pick a random body from the library
+            const idx = Math.floor(rng() * pool.length);
+            const entry = pool[idx];
+            
+            // Clone the data so we don't modify the original
+            return {
+                data: JSON.parse(JSON.stringify(entry.data)),
+                heightmapBase64: entry.heightmapBase64
+            };
+        }
+        
+        // Start loading library immediately
+        loadPlanetLibrary();
 
         // --- CELESTIAL BODY CLASS ---
         class CelestialBody {
@@ -985,22 +1110,37 @@
             // Create new solar system
             const system = new SolarSystem(systemCounter++, 'New System');
             
-            // Generate sun
-            const sunData = generateRandomBodyData('sun', rng);
-            system.addBody(sunData, null);
+            // Helper: get body from library or generate procedurally
+            function getOrGenerateBody(type) {
+                const libraryBody = getLibraryBody(type, rng);
+                if (libraryBody) {
+                    // Use library body with its texture
+                    let texture = null;
+                    if (libraryBody.heightmapBase64) {
+                        texture = new THREE.TextureLoader().load("data:image/png;base64," + libraryBody.heightmapBase64);
+                    }
+                    return { data: libraryBody.data, texture };
+                }
+                // Fall back to procedural generation
+                return { data: generateRandomBodyData(type, rng), texture: null };
+            }
+            
+            // Generate sun (prefer library)
+            const sun = getOrGenerateBody('sun');
+            system.addBody(sun.data, sun.texture);
             
             // Generate 2-6 planets
             const numPlanets = 2 + Math.floor(rng() * 5);
             for (let i = 0; i < numPlanets; i++) {
-                const planetData = generateRandomBodyData('planet', rng);
-                system.addBody(planetData, null);
+                const planet = getOrGenerateBody('planet');
+                system.addBody(planet.data, planet.texture);
                 
                 // 40% chance of having 1-3 moons
                 if (rng() > 0.6) {
                     const numMoons = 1 + Math.floor(rng() * 3);
                     for (let j = 0; j < numMoons; j++) {
-                        const moonData = generateRandomBodyData('moon', rng);
-                        system.addBody(moonData, null);
+                        const moon = getOrGenerateBody('moon');
+                        system.addBody(moon.data, moon.texture);
                     }
                 }
             }
@@ -1612,6 +1752,98 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             composer.setSize(window.innerWidth, window.innerHeight);
         });
+
+        // ============================================
+        // EMBEDDED MODE SUPPORT
+        // ============================================
+        
+        const isEmbedded = window.parent !== window || new URLSearchParams(window.location.search).has('embedded');
+        let stagedSystems = [];
+        
+        if (isEmbedded) {
+            // Show embedded mode button
+            $('btnReceiveSystems').style.display = 'block';
+            
+            // Make regular import buttons smaller
+            $('btnImportSystem').style.fontSize = '10px';
+            $('btnImportSystem').style.padding = '6px';
+            $('btnImportBodies').style.fontSize = '10px';
+            $('btnImportBodies').style.padding = '6px';
+            $('btnExportGalaxy').style.fontSize = '10px';
+            $('btnExportGalaxy').style.padding = '6px';
+            
+            // Request staged systems on load
+            window.parent.postMessage({ type: 'REQUEST_STAGED_SYSTEMS' }, '*');
+        }
+        
+        // Receive systems from parent
+        window.addEventListener('message', (event) => {
+            const { type, data } = event.data || {};
+            
+            if (type === 'RECEIVE_SYSTEMS') {
+                stagedSystems = data || [];
+                updateStagedSystemCount();
+            }
+            
+            if (type === 'EDITOR_ACTIVATED' && isEmbedded) {
+                window.parent.postMessage({ type: 'REQUEST_STAGED_SYSTEMS' }, '*');
+            }
+        });
+        
+        function updateStagedSystemCount() {
+            const countEl = $('stagedSystemCount');
+            if (countEl) {
+                countEl.textContent = stagedSystems.length;
+                $('btnReceiveSystems').style.opacity = stagedSystems.length > 0 ? '1' : '0.5';
+            }
+        }
+        
+        // Import staged systems
+        $('btnReceiveSystems').onclick = () => {
+            if (stagedSystems.length === 0) {
+                alert('No systems staged! Create solar systems in the System Editor first and click "Send to Galaxy Editor".');
+                return;
+            }
+            
+            // Import each staged system
+            for (const sysData of stagedSystems) {
+                const system = new SolarSystem(systemCounter++, sysData.name);
+                system.distanceFromCore = sysData.distanceFromCore || (50 + Math.random() * 150);
+                system.angle = sysData.angle || Math.random() * Math.PI * 2;
+                system.spiralArm = sysData.spiralArm ?? -1;
+                
+                // Add each body to the system
+                for (const bodyInfo of sysData.bodies) {
+                    let texture = null;
+                    if (bodyInfo.heightmapBase64) {
+                        texture = new THREE.TextureLoader().load("data:image/png;base64," + bodyInfo.heightmapBase64);
+                    }
+                    system.addBody(bodyInfo.data, texture);
+                }
+                
+                system.updatePosition();
+                if (detailViewEnabled) {
+                    system.setDetailMode(true, systemScale);
+                }
+                
+                solarSystems.push(system);
+            }
+            
+            updateUI();
+            
+            // Clear staged systems in parent
+            window.parent.postMessage({ type: 'CLEAR_STAGED_SYSTEMS' }, '*');
+            stagedSystems = [];
+            updateStagedSystemCount();
+            
+            // Visual feedback
+            const btn = $('btnReceiveSystems');
+            btn.textContent = '✓ Imported!';
+            btn.style.background = 'linear-gradient(135deg, #00ff88, #00cc66)';
+            setTimeout(() => {
+                btn.innerHTML = '📥 Import from System Editor <span id="stagedSystemCount" style="background:#000;color:#9933ff;padding:2px 6px;border-radius:10px;margin-left:5px;font-size:10px;">0</span>';
+            }, 1500);
+        };
     </script>
 </body>
 </html>

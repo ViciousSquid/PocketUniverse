@@ -68,6 +68,33 @@
         
         #fileInput { display: none; }
 
+        /* Zoom indicator */
+        #zoom-indicator {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: var(--panel); padding: 10px 20px; border-radius: 8px;
+            border: 1px solid var(--border); pointer-events: auto;
+            display: flex; align-items: center; gap: 15px; z-index: 10;
+        }
+        #zoom-indicator .zoom-btn {
+            background: #333; border: 1px solid #555; color: #fff; width: 30px; height: 30px;
+            border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;
+        }
+        #zoom-indicator .zoom-btn:hover { background: var(--accent); color: #000; }
+        #zoom-level { font-family: monospace; color: var(--accent); min-width: 60px; text-align: center; }
+
+        /* Body selection label */
+        #body-label {
+            position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+            background: var(--panel); padding: 12px 24px; border-radius: 8px;
+            border: 1px solid var(--accent); pointer-events: none;
+            font-family: 'Segoe UI', sans-serif; font-size: 14px; z-index: 15;
+            display: none; text-align: center;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+        #body-label .body-name { color: #fff; font-size: 18px; font-weight: bold; margin-bottom: 4px; }
+        #body-label .body-type { color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+        #body-label .body-hint { color: #666; font-size: 10px; margin-top: 6px; }
+
         /* WELCOME SCREEN */
         #welcome {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -118,9 +145,20 @@
                 <button class="collapse-btn">▼</button>
             </div>
             <div class="panel-content">
+                <!-- Embedded Mode: Receive from Planet Editor -->
+                <button id="btnReceivePlanets" class="action-btn" style="display:none; background: linear-gradient(135deg, #ff6600, #ff8833); color: #000; border: none; font-weight: bold;">
+                    📥 Import from Planet Editor <span id="stagedCount" style="background:#000;color:#ff6600;padding:2px 6px;border-radius:10px;margin-left:5px;font-size:10px;">0</span>
+                </button>
+                
                 <button id="btnImport" class="action-btn">➕ Import Body (ZIP)</button>
                 <button id="btnRandomSystem" class="action-btn" style="background: #442; border-color: #664; margin-top: 5px;">🎲 Generate Random System</button>
                 <button id="btnExportSystem" class="action-btn" style="background: #264; border-color: #3a6; margin-top: 5px;">💾 Export Solar System</button>
+                
+                <!-- Embedded Mode: Send to Galaxy Editor -->
+                <button id="btnSendToGalaxy" class="action-btn" style="display:none; margin-top:8px; background:linear-gradient(135deg, #9933ff, #cc66ff); color:#fff; border:none; font-weight:bold;">
+                    📤 Send to Galaxy Editor
+                </button>
+                
                 <input type="file" id="fileInput" accept=".zip">
                 <div id="bodyList" class="body-list">
                     </div>
@@ -150,6 +188,20 @@
                 <button class="action-btn delete-btn" id="btnDelete">Remove Object</button>
             </div>
         </div>
+    </div>
+
+    <div id="zoom-indicator">
+        <button class="zoom-btn" id="btnZoomOut">−</button>
+        <span id="zoom-level">100%</span>
+        <button class="zoom-btn" id="btnZoomIn">+</button>
+        <span style="color:#666; margin-left: 10px;">|</span>
+        <button class="zoom-btn" id="btnResetView" style="width: auto; padding: 0 10px; font-size: 11px;">⌂</button>
+    </div>
+
+    <div id="body-label">
+        <div class="body-name" id="bodyLabelName">Planet Name</div>
+        <div class="body-type" id="bodyLabelType">Planet</div>
+        <div class="body-hint">Press ESC to return</div>
     </div>
 
     <script>
@@ -334,6 +386,7 @@
             uniform float time;
             uniform vec3 seedOffset;
             uniform float isSun;
+            uniform float opacity;
 
             uniform vec3 oceanColor;
             uniform vec3 beachColor;
@@ -362,7 +415,7 @@
                     vec3 N = normalize(vPos);
                     float rim = 1.0 - max(dot(N, vec3(0,0,1)), 0.0);
                     color += vec3(rim * 0.5, rim * 0.2, 0.0); 
-                    gl_FragColor = vec4(color, 1.0);
+                    gl_FragColor = vec4(color, opacity);
                     return;
                 }
 
@@ -386,7 +439,7 @@
                 }
                 float diff = max(dot(N, L), 0.0);
                 vec3 finalColor = color * (diff * 0.8 + 0.2);
-                gl_FragColor = vec4(finalColor, 1.0);
+                gl_FragColor = vec4(finalColor, opacity);
             }
         `;
 
@@ -413,6 +466,124 @@
                 return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
             }
         }
+
+        // ============================================
+        // PLANET LIBRARY SYSTEM
+        // ============================================
+        
+        const planetLibrary = {
+            suns: [],
+            planets: [],
+            moons: [],
+            loaded: false,
+            loading: false
+        };
+        
+        async function loadPlanetLibrary() {
+            if (planetLibrary.loading || planetLibrary.loaded) return;
+            planetLibrary.loading = true;
+            
+            try {
+                // Try to fetch manifest from planets folder
+                const manifestResponse = await fetch('planets/manifest.json');
+                if (!manifestResponse.ok) {
+                    console.log('No planets/manifest.json found - using procedural generation');
+                    planetLibrary.loading = false;
+                    return;
+                }
+                
+                const manifest = await manifestResponse.json();
+                console.log(`Loading planet library: ${manifest.name}`);
+                
+                // Load each body ZIP file
+                for (const filename of manifest.bodies) {
+                    try {
+                        const zipResponse = await fetch(`planets/${filename}`);
+                        if (!zipResponse.ok) continue;
+                        
+                        const zipBlob = await zipResponse.blob();
+                        const zip = await JSZip.loadAsync(zipBlob);
+                        const jsonStr = await zip.file("planet_data.json").async("string");
+                        const data = JSON.parse(jsonStr);
+                        
+                        // Load heightmap if present
+                        let heightmapBase64 = null;
+                        const imgFile = zip.file("heightmap.png");
+                        if (imgFile) {
+                            heightmapBase64 = await imgFile.async("base64");
+                        }
+                        
+                        const bodyEntry = { data, heightmapBase64, filename };
+                        
+                        // Sort into appropriate category
+                        if (data.type === 'sun') {
+                            planetLibrary.suns.push(bodyEntry);
+                        } else if (data.type === 'moon') {
+                            planetLibrary.moons.push(bodyEntry);
+                        } else {
+                            planetLibrary.planets.push(bodyEntry);
+                        }
+                        
+                        console.log(`  Loaded: ${filename} (${data.type})`);
+                    } catch (err) {
+                        console.warn(`Failed to load ${filename}:`, err);
+                    }
+                }
+                
+                planetLibrary.loaded = true;
+                console.log(`Library loaded: ${planetLibrary.suns.length} suns, ${planetLibrary.planets.length} planets, ${planetLibrary.moons.length} moons`);
+                
+                // Update UI to show library status
+                updateLibraryStatus();
+                
+            } catch (err) {
+                console.log('Planet library not available:', err.message);
+                updateLibraryStatus(); // Still update to show "procedural" mode
+            }
+            
+            planetLibrary.loading = false;
+        }
+        
+        function updateLibraryStatus() {
+            const btn = $('btnRandomSystem');
+            const suns = planetLibrary.suns.length;
+            const planets = planetLibrary.planets.length;
+            const moons = planetLibrary.moons.length;
+            const total = suns + planets + moons;
+            
+            if (total > 0) {
+                // Show library count with breakdown on hover
+                btn.innerHTML = `🎲 Generate System <span style="font-size:9px;opacity:0.7;">(${total} in library)</span>`;
+                btn.title = `Library: ${suns} sun(s), ${planets} planet(s), ${moons} moon(s)\nMissing types will be procedurally generated.`;
+                btn.style.borderColor = '#00ff88';
+            } else {
+                // No library - purely procedural
+                btn.innerHTML = `🎲 Generate Random System`;
+                btn.title = `No planets/ folder found.\nAll bodies will be procedurally generated.`;
+            }
+        }
+        
+        function getLibraryBody(type, rng) {
+            let pool;
+            if (type === 'sun') pool = planetLibrary.suns;
+            else if (type === 'moon') pool = planetLibrary.moons;
+            else pool = planetLibrary.planets;
+            
+            if (pool.length === 0) return null;
+            
+            // Pick a random body from the library
+            const idx = Math.floor(rng() * pool.length);
+            const entry = pool[idx];
+            
+            // Clone the data so we don't modify the original
+            return {
+                data: JSON.parse(JSON.stringify(entry.data)),
+                heightmapBase64: entry.heightmapBase64
+            };
+        }
+        
+        // Start loading library immediately
+        loadPlanetLibrary();
 
         // --- CELESTIAL BODY CLASS ---
         class CelestialBody {
@@ -460,10 +631,12 @@
                         grassColor: { value: new THREE.Color(c.grass) },
                         rockColor: { value: new THREE.Color(c.rock) },
                         snowColor: { value: new THREE.Color(c.snow) },
-                        isSun: { value: this.type === 'sun' ? 1.0 : 0.0 }
+                        isSun: { value: this.type === 'sun' ? 1.0 : 0.0 },
+                        opacity: { value: 1.0 }
                     },
                     vertexShader: vertexShader,
-                    fragmentShader: fragmentShader
+                    fragmentShader: fragmentShader,
+                    transparent: true
                 });
 
                 const geo = new THREE.BoxGeometry(1, 1, 1, 64, 64, 64);
@@ -527,12 +700,89 @@
                 const sunDir = worldPos.clone().multiplyScalar(-1).normalize();
                 this.material.uniforms.sunDirection.value.copy(sunDir);
             }
+            
+            // Start catastrophic death spiral
+            startDeathSpiral() {
+                // Get current world position before detaching
+                const worldPos = new THREE.Vector3();
+                this.mesh.getWorldPosition(worldPos);
+                
+                // Remove from parent hierarchy
+                this.pivot.removeFromParent();
+                this.orbitRing.removeFromParent();
+                
+                // Add directly to scene at world position
+                scene.add(this.mesh);
+                this.mesh.position.copy(worldPos);
+                
+                // Random velocity direction (tangent to orbit + outward + some chaos)
+                const outward = worldPos.clone().normalize();
+                const tangent = new THREE.Vector3(-outward.z, 0, outward.x);
+                const chaos = new THREE.Vector3(
+                    (Math.random() - 0.5) * 2,
+                    (Math.random() - 0.5) * 0.5,
+                    (Math.random() - 0.5) * 2
+                );
+                
+                this.deathVelocity = tangent.multiplyScalar(15 + Math.random() * 10)
+                    .add(outward.multiplyScalar(5 + Math.random() * 8))
+                    .add(chaos.multiplyScalar(5));
+                
+                // Random tumble spin
+                this.deathSpin = new THREE.Vector3(
+                    (Math.random() - 0.5) * 8,
+                    (Math.random() - 0.5) * 8,
+                    (Math.random() - 0.5) * 8
+                );
+                
+                this.deathTime = 0;
+                this.deathDuration = 3 + Math.random() * 2; // 3-5 seconds
+                this.isDying = true;
+            }
+            
+            // Update during death spiral
+            updateDeath(dt) {
+                if (!this.isDying) return false;
+                
+                this.deathTime += dt;
+                const progress = this.deathTime / this.deathDuration;
+                
+                // Move outward with velocity
+                this.mesh.position.add(this.deathVelocity.clone().multiplyScalar(dt));
+                
+                // Accelerate slightly (gravitational slingshot feel)
+                this.deathVelocity.multiplyScalar(1 + dt * 0.3);
+                
+                // Tumble faster and faster
+                this.mesh.rotation.x += this.deathSpin.x * dt * (1 + progress);
+                this.mesh.rotation.y += this.deathSpin.y * dt * (1 + progress);
+                this.mesh.rotation.z += this.deathSpin.z * dt * (1 + progress);
+                
+                // Fade out using shader uniform
+                const opacity = Math.max(0, 1 - progress);
+                this.material.uniforms.opacity.value = opacity;
+                
+                // Shrink slightly as it dies
+                const scale = this.mesh.scale.x * (1 - dt * 0.2);
+                this.mesh.scale.setScalar(Math.max(0.1, scale));
+                
+                // Return true if death is complete
+                if (progress >= 1) {
+                    scene.remove(this.mesh);
+                    this.mesh.geometry.dispose();
+                    this.mesh.material.dispose();
+                    return true; // Remove from dying list
+                }
+                return false;
+            }
         }
 
         // --- APP STATE ---
         const bodies = []; 
         let selectedBody = null;
         let bodyCounter = 0;
+        const dyingBodies = []; // Bodies in death spiral
+        let hasEverAddedBody = false; // Track if user has ever added a body (for welcome screen)
 
         // --- UI LOGIC ---
         const $ = (id) => document.getElementById(id);
@@ -633,22 +883,37 @@
             const seedHash = cyrb128(masterSeed.toString());
             const rng = mulberry32(seedHash[0]);
             
-            // Generate sun
-            const sunData = generateRandomBodyData('sun', rng);
-            addBody(sunData, null);
+            // Helper: get body from library or generate procedurally
+            function getOrGenerateBody(type) {
+                const libraryBody = getLibraryBody(type, rng);
+                if (libraryBody) {
+                    // Use library body with its texture
+                    let texture = null;
+                    if (libraryBody.heightmapBase64) {
+                        texture = new THREE.TextureLoader().load("data:image/png;base64," + libraryBody.heightmapBase64);
+                    }
+                    return { data: libraryBody.data, texture, heightmapBase64: libraryBody.heightmapBase64 };
+                }
+                // Fall back to procedural generation
+                return { data: generateRandomBodyData(type, rng), texture: null, heightmapBase64: null };
+            }
+            
+            // Generate sun (prefer library)
+            const sun = getOrGenerateBody('sun');
+            addBody(sun.data, sun.texture, sun.heightmapBase64);
             
             // Generate 2-6 planets
             const numPlanets = 2 + Math.floor(rng() * 5);
             for (let i = 0; i < numPlanets; i++) {
-                const planetData = generateRandomBodyData('planet', rng);
-                addBody(planetData, null);
+                const planet = getOrGenerateBody('planet');
+                addBody(planet.data, planet.texture, planet.heightmapBase64);
                 
                 // 40% chance of having 1-3 moons
                 if (rng() > 0.6) {
                     const numMoons = 1 + Math.floor(rng() * 3);
                     for (let j = 0; j < numMoons; j++) {
-                        const moonData = generateRandomBodyData('moon', rng);
-                        addBody(moonData, null);
+                        const moon = getOrGenerateBody('moon');
+                        addBody(moon.data, moon.texture, moon.heightmapBase64);
                     }
                 }
             }
@@ -683,10 +948,11 @@
         };
 
         function addBody(data, texture, heightmapBase64 = null) {
-            // Hide welcome screen on first import
-            if (bodies.length === 0) {
-                welcomeEl.classList.add('hidden');
-            }
+            // Mark that user has started using the editor
+            hasEverAddedBody = true;
+            
+            // Hide welcome screen
+            welcomeEl.classList.add('hidden');
 
             const body = new CelestialBody(data, texture, bodyCounter++, heightmapBase64);
             bodies.push(body);
@@ -724,8 +990,8 @@
         function renderHierarchy() {
             listEl.innerHTML = '';
             
-            // Show welcome if empty
-            if (bodies.length === 0) {
+            // Only show welcome if user has never added any body
+            if (bodies.length === 0 && !hasEverAddedBody) {
                 welcomeEl.classList.remove('hidden');
             } else {
                 welcomeEl.classList.add('hidden');
@@ -823,22 +1089,63 @@
         
         $('btnDelete').onclick = () => {
             if (!selectedBody) return;
-            selectedBody.pivot.removeFromParent();
-            selectedBody.orbitRing.removeFromParent();
             
-            const idx = bodies.indexOf(selectedBody);
-            if (idx > -1) bodies.splice(idx, 1);
-            
-            if (selectedBody.parentBody) {
-                const childIdx = selectedBody.parentBody.childrenBodies.indexOf(selectedBody);
-                if (childIdx > -1) selectedBody.parentBody.childrenBodies.splice(childIdx, 1);
+            // Check if we're deleting a sun - trigger catastrophe!
+            if (selectedBody.type === 'sun') {
+                // Collect all bodies that will be affected (everything orbiting the sun)
+                const doomed = [];
+                function collectDoomed(body) {
+                    for (const child of body.childrenBodies) {
+                        doomed.push(child);
+                        collectDoomed(child); // Get moons too
+                    }
+                }
+                collectDoomed(selectedBody);
+                
+                // Also get any bodies orbiting the system center (they orbit the sun implicitly)
+                for (const body of bodies) {
+                    if (body !== selectedBody && body.parentBody === null && body.type !== 'sun') {
+                        doomed.push(body);
+                        collectDoomed(body);
+                    }
+                }
+                
+                // Start death spiral for all doomed bodies
+                for (const body of doomed) {
+                    body.startDeathSpiral();
+                    dyingBodies.push(body);
+                    
+                    // Remove from bodies array
+                    const idx = bodies.indexOf(body);
+                    if (idx > -1) bodies.splice(idx, 1);
+                }
+                
+                // Now remove the sun itself
+                selectedBody.pivot.removeFromParent();
+                selectedBody.orbitRing.removeFromParent();
+                const idx = bodies.indexOf(selectedBody);
+                if (idx > -1) bodies.splice(idx, 1);
+            } else {
+                // Normal deletion for non-sun bodies
+                selectedBody.pivot.removeFromParent();
+                selectedBody.orbitRing.removeFromParent();
+                
+                const idx = bodies.indexOf(selectedBody);
+                if (idx > -1) bodies.splice(idx, 1);
+                
+                if (selectedBody.parentBody) {
+                    const childIdx = selectedBody.parentBody.childrenBodies.indexOf(selectedBody);
+                    if (childIdx > -1) selectedBody.parentBody.childrenBodies.splice(childIdx, 1);
+                }
+                
+                selectedBody.childrenBodies.forEach(child => {
+                    child.setParent(null);
+                });
             }
-            
-            selectedBody.childrenBodies.forEach(child => {
-                child.setParent(null);
-            });
 
             selectedBody = null;
+            focusedBody = null;
+            $('body-label').style.display = 'none';
             $('detailPanel').style.display = 'none';
             renderHierarchy();
         };
@@ -904,15 +1211,195 @@
             link.click();
         };
 
+        // ============================================
+        // ZOOM & CLICK-TO-FOCUS FEATURE
+        // ============================================
+        
+        // State for body focus (separate from panel selection)
+        let focusedBody = null;
+        let savedCameraState = null;
+        
+        // Initial camera state for reset
+        const initialCameraPosition = new THREE.Vector3(0, 40, 80);
+        const initialCameraTarget = new THREE.Vector3(0, 0, 0);
+        
+        function updateZoomDisplay() {
+            const dist = camera.position.length();
+            const zoom = Math.round(80 / dist * 100);
+            $('zoom-level').textContent = zoom + '%';
+        }
+        
+        $('btnZoomIn').onclick = () => {
+            camera.position.multiplyScalar(0.7);
+            controls.update();
+            updateZoomDisplay();
+        };
+        
+        $('btnZoomOut').onclick = () => {
+            camera.position.multiplyScalar(1.4);
+            controls.update();
+            updateZoomDisplay();
+        };
+        
+        $('btnResetView').onclick = () => {
+            // Deselect any focused body
+            if (focusedBody) {
+                deselectFocusedBody();
+            }
+            // Animate to initial view
+            animateCameraToPosition(initialCameraPosition.clone(), initialCameraTarget.clone());
+        };
+        
+        controls.addEventListener('change', updateZoomDisplay);
+        
+        // --- RAYCASTING ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        
+        // Body focus functions (for 3D click interaction)
+        function selectFocusedBody(body) {
+            // Save camera state before zooming
+            savedCameraState = {
+                position: camera.position.clone(),
+                target: controls.target.clone()
+            };
+            
+            focusedBody = body;
+            
+            // Also select in the panel
+            selectBody(body);
+            
+            // Show label
+            const bodyLabel = $('body-label');
+            $('bodyLabelName').textContent = body.data.seed;
+            $('bodyLabelType').textContent = body.type.charAt(0).toUpperCase() + body.type.slice(1);
+            bodyLabel.style.display = 'block';
+            
+            // Animate camera to body
+            animateCameraToBody(body);
+        }
+        
+        function deselectFocusedBody() {
+            if (!focusedBody) return;
+            
+            // Hide label
+            $('body-label').style.display = 'none';
+            
+            // Restore camera
+            if (savedCameraState) {
+                animateCameraToPosition(savedCameraState.position, savedCameraState.target);
+                savedCameraState = null;
+            }
+            
+            focusedBody = null;
+        }
+        
+        function getBodyWorldPosition(body) {
+            const worldPos = new THREE.Vector3();
+            body.mesh.getWorldPosition(worldPos);
+            return worldPos;
+        }
+        
+        function animateCameraToBody(body) {
+            const targetPos = getBodyWorldPosition(body);
+            
+            // Calculate view distance based on body size
+            const bodySize = body.mesh.scale.x;
+            const viewDistance = Math.max(bodySize * 5, 8);
+            
+            // Calculate new camera position (offset from body)
+            const offset = new THREE.Vector3(viewDistance * 0.7, viewDistance * 0.5, viewDistance * 0.7);
+            const newCamPos = targetPos.clone().add(offset);
+            
+            animateCameraToPosition(newCamPos, targetPos);
+        }
+        
+        function animateCameraToPosition(newPosition, newTarget) {
+            const startPos = camera.position.clone();
+            const startTarget = controls.target.clone();
+            const duration = 500;
+            const startTime = performance.now();
+            
+            function animateCamera() {
+                const elapsed = performance.now() - startTime;
+                const t = Math.min(elapsed / duration, 1);
+                
+                // Smooth easing
+                const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+                
+                camera.position.lerpVectors(startPos, newPosition, ease);
+                controls.target.lerpVectors(startTarget, newTarget, ease);
+                controls.update();
+                updateZoomDisplay();
+                
+                if (t < 1) {
+                    requestAnimationFrame(animateCamera);
+                }
+            }
+            animateCamera();
+        }
+        
+        // Click handler for 3D view
+        renderer.domElement.addEventListener('click', (e) => {
+            if (e.target !== renderer.domElement) return;
+            
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Build list of clickable body meshes
+            const clickables = bodies.map(b => ({ mesh: b.mesh, body: b }));
+            
+            const intersects = raycaster.intersectObjects(clickables.map(c => c.mesh));
+            
+            if (intersects.length > 0) {
+                const hit = clickables.find(c => c.mesh === intersects[0].object);
+                if (hit) {
+                    selectFocusedBody(hit.body);
+                }
+            } else {
+                // Clicked on empty space - deselect focused body
+                if (focusedBody) {
+                    deselectFocusedBody();
+                }
+            }
+        });
+        
+        // ESC key handler
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (focusedBody) {
+                    deselectFocusedBody();
+                }
+            }
+        });
+
         const clock = new THREE.Clock();
         function animate() {
             requestAnimationFrame(animate);
             const dt = clock.getDelta();
             bodies.forEach(b => b.update(dt));
+            
+            // Update dying bodies (catastrophic death spiral)
+            for (let i = dyingBodies.length - 1; i >= 0; i--) {
+                const dead = dyingBodies[i].updateDeath(dt);
+                if (dead) {
+                    dyingBodies.splice(i, 1);
+                }
+            }
+            
+            // Track focused body with camera
+            if (focusedBody && savedCameraState) {
+                const targetPos = getBodyWorldPosition(focusedBody);
+                controls.target.copy(targetPos);
+            }
+            
             controls.update();
             composer.render();
         }
         animate();
+        updateZoomDisplay();
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -920,6 +1407,127 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             composer.setSize(window.innerWidth, window.innerHeight);
         });
+
+        // ============================================
+        // EMBEDDED MODE SUPPORT
+        // ============================================
+        
+        const isEmbedded = window.parent !== window || new URLSearchParams(window.location.search).has('embedded');
+        let stagedPlanets = [];
+        
+        if (isEmbedded) {
+            // Show embedded mode buttons
+            $('btnReceivePlanets').style.display = 'block';
+            $('btnSendToGalaxy').style.display = 'block';
+            
+            // Make regular import button smaller
+            $('btnImport').style.fontSize = '10px';
+            $('btnImport').style.padding = '6px';
+            $('btnExportSystem').style.fontSize = '10px';
+            $('btnExportSystem').style.padding = '6px';
+            
+            // Request staged planets on load
+            window.parent.postMessage({ type: 'REQUEST_STAGED_PLANETS' }, '*');
+        }
+        
+        // Receive planets from parent
+        window.addEventListener('message', (event) => {
+            const { type, data } = event.data || {};
+            
+            if (type === 'RECEIVE_PLANETS') {
+                stagedPlanets = data || [];
+                updateStagedCount();
+            }
+            
+            if (type === 'EDITOR_ACTIVATED' && isEmbedded) {
+                window.parent.postMessage({ type: 'REQUEST_STAGED_PLANETS' }, '*');
+            }
+        });
+        
+        function updateStagedCount() {
+            const countEl = $('stagedCount');
+            if (countEl) {
+                countEl.textContent = stagedPlanets.length;
+                $('btnReceivePlanets').style.opacity = stagedPlanets.length > 0 ? '1' : '0.5';
+            }
+        }
+        
+        // Import staged planets
+        $('btnReceivePlanets').onclick = () => {
+            if (stagedPlanets.length === 0) {
+                alert('No planets staged! Create planets in the Planet Editor first and click "Send to System Editor".');
+                return;
+            }
+            
+            // Import each staged planet
+            for (const planetData of stagedPlanets) {
+                let texture = null;
+                if (planetData.heightmapBase64) {
+                    texture = new THREE.TextureLoader().load("data:image/png;base64," + planetData.heightmapBase64);
+                }
+                addBody(planetData, texture, planetData.heightmapBase64);
+            }
+            
+            // Clear staged planets in parent
+            window.parent.postMessage({ type: 'CLEAR_STAGED_PLANETS' }, '*');
+            stagedPlanets = [];
+            updateStagedCount();
+            
+            // Visual feedback
+            const btn = $('btnReceivePlanets');
+            btn.textContent = '✓ Imported!';
+            btn.style.background = 'linear-gradient(135deg, #00ff88, #00cc66)';
+            setTimeout(() => {
+                btn.innerHTML = '📥 Import from Planet Editor <span id="stagedCount" style="background:#000;color:#ff6600;padding:2px 6px;border-radius:10px;margin-left:5px;font-size:10px;">0</span>';
+            }, 1500);
+        };
+        
+        // Get system data for export to Galaxy
+        function getSystemData() {
+            if (bodies.length === 0) return null;
+            
+            const sun = bodies.find(b => b.type === 'sun');
+            const systemName = sun ? sun.data.seed : (bodies[0]?.data.seed || 'System');
+            
+            return {
+                name: systemName + ' System',
+                distanceFromCore: 100,
+                angle: Math.random() * Math.PI * 2,
+                spiralArm: -1,
+                bodies: bodies.map(body => ({
+                    data: body.data,
+                    heightmapBase64: body.heightmapBase64,
+                    type: body.type,
+                    orbitDistance: body.orbitDistance,
+                    orbitSpeed: body.orbitSpeed,
+                    parentId: body.parentBody ? body.parentBody.id : null
+                }))
+            };
+        }
+        
+        // Send to Galaxy Editor
+        $('btnSendToGalaxy').onclick = () => {
+            const systemData = getSystemData();
+            if (!systemData) {
+                alert('No bodies in system! Add some planets first.');
+                return;
+            }
+            
+            window.parent.postMessage({
+                type: 'STAGE_SYSTEM',
+                data: systemData
+            }, '*');
+            
+            // Visual feedback
+            const btn = $('btnSendToGalaxy');
+            const originalText = btn.textContent;
+            btn.textContent = '✓ Staged!';
+            btn.style.background = 'linear-gradient(135deg, #00ff88, #00cc66)';
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = 'linear-gradient(135deg, #9933ff, #cc66ff)';
+            }, 1500);
+        };
     </script>
 </body>
 </html>
