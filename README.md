@@ -13,7 +13,7 @@ Click <a href="https://github.com/ViciousSquid/PocketUniverse/archive/refs/heads
 
 1. **PlanetEditor.html**  - creates `sun_*` , `planet_*` and `moon_*` **ZIP files**
 
-2. **SolarSystemEditor.html** - Imports the `sun_*` , `planet_*` and `moon_*` files, Exports `solarsystem_*` ZIP file
+2. **SolarSystemEditor.html** - Imports `sun_*` , `planet_*` and `moon_*` files, Exports `solarsystem_*` ZIP file
 
 3. **GalaxyEditor.html** - Imports `solarsystem_*` zip files
 
