@@ -5,11 +5,20 @@
     <title>Galaxy Editor</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        :root { --accent: #00ff88; --accent2: #ff6600; --panel: rgba(10, 10, 12, 0.95); --border: rgba(255,255,255,0.1); }
+        :root { --accent: #00ff88; --accent2: #ff6600; --danger: #ff3333; --panel: rgba(10, 10, 12, 0.95); --border: rgba(255,255,255,0.1); }
         body { margin: 0; overflow: hidden; background: #000; color: #e0e0e0; font-family: 'Segoe UI', Roboto, sans-serif; font-size: 13px; }
         
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; justify-content: space-between; padding: 20px; box-sizing: border-box; z-index: 10; }
         
+        /* FPS Counter Style */
+        #fps-counter {
+            position: absolute; top: 10px; left: 10px;
+            background: rgba(0, 0, 0, 0.5); padding: 4px 8px;
+            border: 1px solid #333; border-radius: 4px;
+            font-family: monospace; color: #00ff88; font-weight: bold;
+            z-index: 20; pointer-events: none;
+        }
+
         .panel { 
             pointer-events: auto; background: var(--panel); backdrop-filter: blur(12px); 
             width: 300px; padding: 0; border-radius: 8px; border: 1px solid var(--border); 
@@ -159,6 +168,26 @@
         #body-label .body-name { color: #fff; font-size: 18px; font-weight: bold; margin-bottom: 4px; }
         #body-label .body-type { color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
         #body-label .body-hint { color: #666; font-size: 10px; margin-top: 6px; }
+
+        /* DISASTER TOAST */
+        #disaster-toast {
+            position: absolute; top: 80px; left: 50%; transform: translateX(-50%) scale(0.9);
+            background: rgba(255, 20, 20, 0.95); border: 2px solid #ff5555;
+            color: #fff; padding: 15px 40px; border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 0 50px rgba(255, 0, 0, 0.6);
+            opacity: 0; pointer-events: none; z-index: 100;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 5px;
+            min-width: 300px;
+        }
+        #disaster-toast.active { opacity: 1; transform: translateX(-50%) scale(1); pointer-events: auto; }
+        #disaster-toast:hover { background: rgba(255, 50, 50, 1); transform: translateX(-50%) scale(1.05); }
+        
+        #disaster-title { font-weight: 900; font-size: 20px; letter-spacing: 2px; text-transform: uppercase; text-shadow: 0 2px 0 #800; }
+        #disaster-details { font-weight: normal; font-size: 14px; max-width: 400px; line-height: 1.4; display: none; }
+        #disaster-hint { font-size: 10px; text-transform: uppercase; opacity: 0.8; margin-top: 5px; font-weight: bold; letter-spacing: 1px; }
     </style>
     <script type="importmap">
         {
@@ -170,6 +199,14 @@
     </script>
 </head>
 <body>
+    <div id="fps-counter">FPS: 0</div>
+
+    <div id="disaster-toast">
+        <div id="disaster-title">⚠️ Disaster! Collision Detected!</div>
+        <div id="disaster-details"></div>
+        <div id="disaster-hint">Click to View Site</div>
+    </div>
+
     <div id="welcome">
         <h1>🌌 Galaxy Editor</h1>
         <p>Assemble your solar systems into a galaxy with spiral arms.</p>
@@ -208,7 +245,6 @@
             </div>
             <div class="panel-content">
                 <h3>Import</h3>
-                <!-- Embedded Mode: Receive from System Editor -->
                 <button id="btnReceiveSystems" class="action-btn" style="display:none; background: linear-gradient(135deg, #9933ff, #cc66ff); color: #fff; border: none; font-weight: bold; margin-bottom: 8px;">
                     📥 Import from System Editor <span id="stagedSystemCount" style="background:#000;color:#9933ff;padding:2px 6px;border-radius:10px;margin-left:5px;font-size:10px;">0</span>
                 </button>
@@ -299,6 +335,24 @@
             const panel = document.getElementById(id);
             panel.classList.toggle('collapsed');
         }
+
+        // --- TOAST NOTIFICATION LOGIC ---
+        let toastTimeout;
+        let lastDisasterEvent = null; // Store location and message
+
+        function showDisasterToast(eventData) {
+            const toast = document.getElementById('disaster-toast');
+            const detailsEl = document.getElementById('disaster-details');
+            const hintEl = document.getElementById('disaster-hint');
+            
+            // Logic handled in module
+        }
+
+        // Add Click Listener to Toast
+        document.getElementById('disaster-toast').addEventListener('click', () => {
+            if (!lastDisasterEvent) return;
+            // Logic handled in module
+        });
     </script>
 
     <script type="module">
@@ -348,6 +402,97 @@
         for(let i = 0; i < 20000 * 3; i++) starPos[i] = (Math.random() - 0.5) * 4000;
         starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
         scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, transparent: true, opacity: 0.4 })));
+
+        // --- EXPLOSION SYSTEM (OPTIMIZED) ---
+        const explosions = [];
+        const debrisGeometry = new THREE.BufferGeometry();
+        // Create a generic debris particle geometry (increased count)
+        const debrisCount = 1000; 
+        const debrisPos = new Float32Array(debrisCount * 3);
+        
+        for(let i=0; i<debrisCount; i++) {
+            debrisPos[i*3] = (Math.random()-0.5);
+            debrisPos[i*3+1] = (Math.random()-0.5);
+            debrisPos[i*3+2] = (Math.random()-0.5);
+        }
+        debrisGeometry.setAttribute('position', new THREE.BufferAttribute(debrisPos, 3));
+
+        class Explosion {
+            constructor(position, color, scale) {
+                this.age = 0;
+                this.lifespan = 8.0; // Increased to 8s so debris lingers longer
+                this.active = true;
+                this.flashDuration = 0.5; // Flash fades out VERY fast to not blind user
+
+                // Debris particles
+                const geo = debrisGeometry.clone();
+                const mat = new THREE.PointsMaterial({
+                    color: color,
+                    size: scale * 0.4,
+                    transparent: true,
+                    opacity: 1,
+                    blending: THREE.AdditiveBlending
+                });
+                this.particles = new THREE.Points(geo, mat);
+                this.particles.position.copy(position);
+                
+                // Store velocities per instance with higher speed
+                this.velocities = [];
+                for(let i=0; i<debrisCount; i++) {
+                    const speed = 5 + Math.random() * 25; 
+                    const v = new THREE.Vector3(
+                        (Math.random()-0.5), 
+                        (Math.random()-0.5), 
+                        (Math.random()-0.5)
+                    ).normalize().multiplyScalar(speed * scale);
+                    this.velocities.push(v);
+                }
+                
+                scene.add(this.particles);
+
+                // Flash light - SMALLER and LESS INTENSE
+                // Radius reduced from 40 to 10, Intensity from 5 to 2
+                this.light = new THREE.PointLight(color, 2, scale * 10); 
+                this.light.position.copy(position);
+                scene.add(this.light);
+            }
+
+            update(dt) {
+                this.age += dt;
+                const progress = this.age / this.lifespan;
+
+                if (progress >= 1) {
+                    this.active = false;
+                    scene.remove(this.particles);
+                    scene.remove(this.light);
+                    this.particles.geometry.dispose();
+                    this.particles.material.dispose();
+                    return;
+                }
+
+                // Expand particles
+                const positions = this.particles.geometry.attributes.position.array;
+                for(let i=0; i<debrisCount; i++) {
+                    positions[i*3] += this.velocities[i].x * dt;
+                    positions[i*3+1] += this.velocities[i].y * dt;
+                    positions[i*3+2] += this.velocities[i].z * dt;
+                    
+                    // High Drag to make debris "hang" in space
+                    this.velocities[i].multiplyScalar(0.96); 
+                }
+                this.particles.geometry.attributes.position.needsUpdate = true;
+
+                // Debris fades slowly over the longer lifespan
+                this.particles.material.opacity = 1 - Math.pow(progress, 3);
+                
+                // Light flashes quickly then dies
+                if (this.age < this.flashDuration) {
+                    this.light.intensity = 2 * (1 - (this.age / this.flashDuration));
+                } else {
+                    this.light.intensity = 0;
+                }
+            }
+        }
 
         // --- SPIRAL ARM DUST ---
         let spiralParticles = null;
@@ -687,6 +832,7 @@
                 this.data = data;
                 this.type = data.type || 'planet';
                 this.parentSystem = parentSystem;
+                this.uuid = THREE.MathUtils.generateUUID(); // Unique ID for collision tracking
                 
                 const p = data.params;
                 const c = data.colors;
@@ -915,6 +1061,35 @@
                     body.dispose();
                 }
                 this.celestialBodies = [];
+            }
+
+            // Remove a specific body instance (used by collision system)
+            removeBodyInstance(bodyInstance) {
+                // Find in celestialBodies or childBodies
+                let idx = this.celestialBodies.indexOf(bodyInstance);
+                if (idx > -1) {
+                    this.celestialBodies.splice(idx, 1);
+                    bodyInstance.pivot.removeFromParent();
+                    bodyInstance.orbitRing.removeFromParent();
+                } else {
+                    // Check children (moons)
+                    for(const p of this.celestialBodies) {
+                        const childIdx = p.childBodies.indexOf(bodyInstance);
+                        if (childIdx > -1) {
+                            p.childBodies.splice(childIdx, 1);
+                            bodyInstance.pivot.removeFromParent();
+                            bodyInstance.orbitRing.removeFromParent();
+                            break;
+                        }
+                    }
+                }
+                
+                // Remove from data definition
+                const dataIdx = this.bodies.indexOf(bodyInstance.data);
+                if (dataIdx > -1) this.bodies.splice(dataIdx, 1);
+
+                bodyInstance.dispose();
+                updateUI();
             }
             
             setDetailMode(enabled, scaleFactor) {
@@ -1707,11 +1882,131 @@
             }
         });
 
+        // --- COLLISION DETECTION ---
+        const worldPosA = new THREE.Vector3();
+        const worldPosB = new THREE.Vector3();
+
+        function checkCollisions() {
+            // Only relevant in detail view where meshes exist
+            if (!detailViewEnabled) return;
+            
+            // THROTTLING: If too many explosions are active, stop checking for collisions to prevent crash
+            if (explosions.length >= 5) return; 
+
+            const allBodies = [];
+            
+            // 1. Flatten all active bodies into a single array with world coords
+            solarSystems.forEach(sys => {
+                const bodies = [ ...sys.celestialBodies ];
+                sys.celestialBodies.forEach(b => bodies.push(...b.childBodies));
+                
+                bodies.forEach(body => {
+                    body.mesh.getWorldPosition(worldPosA);
+                    allBodies.push({
+                        instance: body,
+                        system: sys,
+                        pos: worldPosA.clone(),
+                        radius: body.baseScale * systemScale
+                    });
+                });
+            });
+
+            // 2. Check collisions
+            const toDestroy = new Set();
+            let collisionOccurred = false;
+            let collisionPos = new THREE.Vector3();
+            let collisionMsg = "";
+
+            for (let i = 0; i < allBodies.length; i++) {
+                const a = allBodies[i];
+                for (let j = i + 1; j < allBodies.length; j++) {
+                    const b = allBodies[j];
+                    
+                    if (a.system === b.system) continue;
+
+                    const distSq = a.pos.distanceToSquared(b.pos);
+                    const radiiSum = (a.radius + b.radius) * 0.8; 
+                    
+                    if (distSq < radiiSum * radiiSum) {
+                        toDestroy.add(a);
+                        toDestroy.add(b);
+                        
+                        const midPoint = a.pos.clone().add(b.pos).multiplyScalar(0.5);
+                        
+                        const colA = new THREE.Color(a.instance.data.colors.ocean);
+                        const colB = new THREE.Color(b.instance.data.colors.rock || b.instance.data.colors.ocean);
+                        const mixCol = colA.lerp(colB, 0.5);
+                        mixCol.offsetHSL(0, 0, 0.2); 
+                        
+                        explosions.push(new Explosion(midPoint, mixCol, a.radius + b.radius));
+                        collisionOccurred = true;
+                        
+                        collisionPos.copy(midPoint);
+                        collisionMsg = `${a.instance.data.seed} collided with ${b.instance.data.seed}`;
+                    }
+                }
+            }
+
+            // 3. Remove destroyed bodies and Show Toast
+            if (collisionOccurred) {
+                // Update Toast manually
+                const toast = document.getElementById('disaster-toast');
+                const detailsEl = document.getElementById('disaster-details');
+                const hintEl = document.getElementById('disaster-hint');
+                
+                lastDisasterEvent = { position: collisionPos, message: collisionMsg };
+
+                detailsEl.style.display = 'none';
+                detailsEl.textContent = collisionMsg;
+                hintEl.style.display = 'block';
+                
+                toast.classList.add('active');
+                
+                if (toastTimeout) clearTimeout(toastTimeout);
+                toastTimeout = setTimeout(() => {
+                    toast.classList.remove('active');
+                }, 8000); 
+                
+                toDestroy.forEach(item => {
+                    if (selectedBody === item.instance) deselectBody();
+                    item.system.removeBodyInstance(item.instance);
+                });
+                
+                updateUI();
+            }
+        }
+        
+        // Add Click Listener to Toast inside module
+        document.getElementById('disaster-toast').addEventListener('click', () => {
+            if (!lastDisasterEvent) return;
+            document.getElementById('disaster-details').style.display = 'block';
+            document.getElementById('disaster-hint').style.display = 'none';
+            const targetPos = lastDisasterEvent.position;
+            const cameraOffset = new THREE.Vector3(20, 15, 20);
+            const newCamPos = targetPos.clone().add(cameraOffset);
+            if (selectedBody) deselectBody();
+            animateCameraToPosition(newCamPos, targetPos);
+        });
+
         // --- ANIMATION LOOP ---
         const clock = new THREE.Clock();
         
+        // FPS Counter
+        const fpsEl = document.getElementById('fps-counter');
+        let frames = 0;
+        let lastTime = performance.now();
+        
         function animate() {
             requestAnimationFrame(animate);
+            
+            // FPS Update
+            frames++;
+            const timeNow = performance.now();
+            if (timeNow >= lastTime + 1000) {
+                fpsEl.innerText = 'FPS: ' + Math.round((frames * 1000) / (timeNow - lastTime));
+                frames = 0;
+                lastTime = timeNow;
+            }
             
             const dt = clock.getDelta();
             const time = clock.getElapsedTime();
@@ -1727,10 +2022,19 @@
                     sys.update(dt, systemScale);
                 }
                 
-                // Track selected body with camera
                 if (selectedBody && savedCameraState) {
                     const targetPos = getBodyWorldPosition(selectedBody, selectedSystem);
                     controls.target.copy(targetPos);
+                }
+                
+                checkCollisions();
+            }
+            
+            // Update Explosions
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                explosions[i].update(dt);
+                if (!explosions[i].active) {
+                    explosions.splice(i, 1);
                 }
             }
             
@@ -1761,30 +2065,22 @@
         let stagedSystems = [];
         
         if (isEmbedded) {
-            // Show embedded mode button
             $('btnReceiveSystems').style.display = 'block';
-            
-            // Make regular import buttons smaller
             $('btnImportSystem').style.fontSize = '10px';
             $('btnImportSystem').style.padding = '6px';
             $('btnImportBodies').style.fontSize = '10px';
             $('btnImportBodies').style.padding = '6px';
             $('btnExportGalaxy').style.fontSize = '10px';
             $('btnExportGalaxy').style.padding = '6px';
-            
-            // Request staged systems on load
             window.parent.postMessage({ type: 'REQUEST_STAGED_SYSTEMS' }, '*');
         }
         
-        // Receive systems from parent
         window.addEventListener('message', (event) => {
             const { type, data } = event.data || {};
-            
             if (type === 'RECEIVE_SYSTEMS') {
                 stagedSystems = data || [];
                 updateStagedSystemCount();
             }
-            
             if (type === 'EDITOR_ACTIVATED' && isEmbedded) {
                 window.parent.postMessage({ type: 'REQUEST_STAGED_SYSTEMS' }, '*');
             }
@@ -1798,21 +2094,16 @@
             }
         }
         
-        // Import staged systems
         $('btnReceiveSystems').onclick = () => {
             if (stagedSystems.length === 0) {
                 alert('No systems staged! Create solar systems in the System Editor first and click "Send to Galaxy Editor".');
                 return;
             }
-            
-            // Import each staged system
             for (const sysData of stagedSystems) {
                 const system = new SolarSystem(systemCounter++, sysData.name);
                 system.distanceFromCore = sysData.distanceFromCore || (50 + Math.random() * 150);
                 system.angle = sysData.angle || Math.random() * Math.PI * 2;
                 system.spiralArm = sysData.spiralArm ?? -1;
-                
-                // Add each body to the system
                 for (const bodyInfo of sysData.bodies) {
                     let texture = null;
                     if (bodyInfo.heightmapBase64) {
@@ -1820,23 +2111,16 @@
                     }
                     system.addBody(bodyInfo.data, texture);
                 }
-                
                 system.updatePosition();
                 if (detailViewEnabled) {
                     system.setDetailMode(true, systemScale);
                 }
-                
                 solarSystems.push(system);
             }
-            
             updateUI();
-            
-            // Clear staged systems in parent
             window.parent.postMessage({ type: 'CLEAR_STAGED_SYSTEMS' }, '*');
             stagedSystems = [];
             updateStagedSystemCount();
-            
-            // Visual feedback
             const btn = $('btnReceiveSystems');
             btn.textContent = '✓ Imported!';
             btn.style.background = 'linear-gradient(135deg, #00ff88, #00cc66)';
