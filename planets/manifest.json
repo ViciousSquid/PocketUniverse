@@ -1,0 +1,23 @@
+{
+    "name": "My Planet Library",
+    "description": "Custom planets, moons, and suns for procedural system generation",
+    "bodies": [
+        "moon_1llwjk.zip",
+        "moon_at9vvt.zip",
+        "moon_ikqyv.zip",
+        "planet_1llwjk.zip",
+        "planet_2ih98j.zip",
+        "planet_4stqm.zip",
+        "planet_5hx7bc.zip",
+        "planet_5uvji8.zip",
+        "planet_47lf48.zip",
+        "planet_at9vvt.zip",
+        "planet_d8wbg.zip",
+        "planet_e23zpf.zip",
+        "planet_ejoba.zip",
+        "planet_fnepx.zip",
+        "planet_odx8ou.zip",
+        "sun_Colossus.zip",
+        "sun_Gigantor.zip"
+    ]
+}
