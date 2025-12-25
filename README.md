@@ -10,7 +10,7 @@ Click <a href="https://github.com/ViciousSquid/PocketUniverse/archive/refs/heads
 #### Extract the files and run index.html in your web browser. No install needed.
 
 
-   editors can be ran independently:
+   _editors can be ran independently:_
 
 
 1. **PlanetEditor.html**  - creates `sun_*` , `planet_*` and `moon_*` **ZIP files**
