@@ -20,7 +20,6 @@ Click <a href="https://github.com/ViciousSquid/PocketUniverse/archive/refs/heads
 
 3. **GalaxyEditor.html** - Imports `solarsystem_*` zip files
 
-   All tools can randomly generate 
 
  _example planets, moons and suns can be found in the `planets` folder_
 
