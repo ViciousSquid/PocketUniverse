@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Planet Editor v1.2</title>
+    <title>Planet Editor v1.3</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root { --accent: #00ff88; --bg: #0a0a10; --panel: rgba(10, 10, 12, 0.95); }
@@ -24,7 +24,7 @@
         }
         
         .panel.collapsed { max-height: none; overflow: visible; 
-            width: auto !important; /* Override fixed ID widths so it shrinks */
+            width: auto !important;
         }
         .panel.collapsed .panel-content { 
             display: none; 
@@ -54,6 +54,7 @@
         input[type=range] { width: 100%; margin: 6px 0; cursor: pointer; accent-color: var(--accent); height: 4px; background: #333; appearance: none; border-radius: 2px; }
         input[type=range]::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; background: #ddd; border-radius: 50%; cursor: pointer; transition: background 0.2s; }
         input[type=range]::-webkit-slider-thumb:hover { background: var(--accent); }
+        input[type=range]:disabled { opacity: 0.5; cursor: not-allowed; }
 
         input[type=text] { 
             background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 8px; border-radius: 4px; width: 100%; box-sizing: border-box; text-align: center; font-weight: bold; letter-spacing: 1px;
@@ -72,6 +73,9 @@
         input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
         .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
         .checkbox-row label { cursor: pointer; }
+        
+        .checkbox-row.gold-accent input[type=checkbox] { accent-color: #FFD700; }
+        .checkbox-row.gold-accent label { color: #FFD700; }
 
         .btn-group { display: flex; gap: 4px; margin-top: 5px; }
         button {
@@ -80,6 +84,7 @@
         }
         button:hover { background: #333; color: #fff; }
         button.active-geo { background: var(--accent); color: #000; border-color: var(--accent); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
         
         .seed-container { display: flex; gap: 5px; margin-bottom: 10px; }
         #seedInput { font-family: monospace; }
@@ -88,6 +93,7 @@
         
         .color-row { display: flex; align-items: center; gap: 8px; }
         .color-row label { flex: 1; }
+        .color-row input[type=color] { height: 30px; }
         
         #center-info {
             pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 20px;
@@ -98,12 +104,54 @@
             font-family: monospace; font-size: 12px; color: var(--accent);
         }
         .seed-container {
-    border: 2px solid #FFD700;  /* Yellow border */
-    border-radius: 6px;          /* Rounded corners */
-    padding: 8px;
-    background-color: rgba(255, 215, 0, 0.1); /* Light yellow background */
-    box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); /* Yellow glow effect */
-}
+            border: 2px solid #FFD700;
+            border-radius: 6px;
+            padding: 8px;
+            background-color: rgba(255, 215, 0, 0.1);
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+        
+        /* Tab System */
+        .tab-container {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 8px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #888;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover {
+            background: #2a2a2a;
+            color: #aaa;
+        }
+        .tab-btn.active {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        .rings-controls {
+            transition: opacity 0.2s;
+        }
+        .rings-controls.disabled {
+            opacity: 0.4;
+            pointer-events: none;
+        }
     </style>
 
     <script type="importmap">
@@ -134,8 +182,8 @@
 
                 <h3>Name</h3>
                 <div class="seed-container">
-                    <input type="text" id="seedInput" value="Cosmos" placeholder="Seed">
-                    <button id="randomSeed" style="max-width: 40px;">🎲</button>
+                    <input type="text" id="seedInput" value="1225Davis" placeholder="Seed">
+                    <button id="randomSeed" style="max-width: 50px; font-size: 24px; line-height: 1;">🎲</button>
                 </div>
                 
                 <div class="btn-group">
@@ -156,9 +204,6 @@
                 <h3>Noise Generator</h3>
                 <div class="row"><label>Scale</label><span id="freqVal" class="val">0.65</span></div>
                 <input type="range" id="frequency" min="0.5" max="8.0" step="0.01" value="0.65">
-
-                <div class="row"><label>Detail</label><span id="octVal" class="val">5</span></div>
-                <input type="range" id="octaves" min="1" max="10" step="1" value="5">
 
                 <div class="row"><label>Roughness</label><span id="persVal" class="val">0.18</span></div>
                 <input type="range" id="persistence" min="0" max="0.8" step="0.01" value="0.18">
@@ -183,44 +228,69 @@
 
         <div id="controls-right" class="panel">
             <div class="panel-header" onclick="togglePanel('controls-right')">
-                <h2>Biomes</h2>
+                <h2>Appearance</h2>
                 <button class="collapse-btn">▼</button>
             </div>
             
             <div class="panel-content">
-                <h3>Surface Colors</h3>
-                <div class="color-row"><label>Ocean</label><input type="color" id="colorOcean" value="#87ceeb"></div>
-                <div class="checkbox-row">
-                    <input type="checkbox" id="waterNoise" checked>
-                    <label for="waterNoise">Water Noise</label>
+                <!-- Tab Navigation -->
+                <div class="tab-container">
+                    <button class="tab-btn active" data-tab="biomes">Biomes</button>
+                    <button class="tab-btn" data-tab="rings">Rings</button>
                 </div>
-                <div class="color-row"><label>Beach / Sand</label><input type="color" id="colorBeach" value="#ffd4a3"></div>
-                <div class="color-row"><label>Grass</label><input type="color" id="colorGrass" value="#1a8c1a"></div>
-                <div class="color-row"><label>Rock</label><input type="color" id="colorRock" value="#555555"></div>
-                <div class="color-row"><label>Snow</label><input type="color" id="colorSnow" value="#ffffff"></div>
-
-                <h3>Surface Levels</h3>
-                <div class="row"><label>Sea Level</label><span id="oceanVal" class="val">-0.79</span></div>
-                <input type="range" id="oceanLevel" min="-1.0" max="0.6" step="0.001" value="-0.79">
-
-                <div class="row"><label>Snow Line</label><span id="snowVal" class="val">0.60</span></div>
-                <input type="range" id="snowLevel" min="0.0" max="1.2" step="0.01" value="0.60">
-
-                <div class="row"><label>Vegetation</label><span id="moistVal" class="val">0.0</span></div>
-                <input type="range" id="moistureOffset" min="-1.0" max="1.0" step="0.01" value="0.0">
-
-                <h3>🌲 Vegetation</h3>
-                <div class="checkbox-row">
-                    <input type="checkbox" id="enableTrees" checked>
-                    <label for="enableTrees">Enable Trees</label>
-                </div>
-                <div class="row"><label>Density</label><span id="treeDensVal" class="val">50</span></div>
-                <input type="range" id="treeDensity" min="0" max="100" step="1" value="50">
                 
-                <div class="row"><label>Size</label><span id="treeSizeVal" class="val">1.0</span></div>
-                <input type="range" id="treeSize" min="0.3" max="3.0" step="0.1" value="1.0">
+                <!-- Biomes Tab -->
+                <div id="tab-biomes" class="tab-content active">
+                    <h3>Surface Colors</h3>
+                    <div class="color-row"><label>Ocean</label><input type="color" id="colorOcean" value="#87ceeb"></div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="waterNoise" checked>
+                        <label for="waterNoise">Water Noise</label>
+                    </div>
+                    <div class="color-row"><label>Beach / Sand</label><input type="color" id="colorBeach" value="#ffd4a3"></div>
+                    <div class="color-row"><label>Grass</label><input type="color" id="colorGrass" value="#1a8c1a"></div>
+                    <div class="color-row"><label>Rock</label><input type="color" id="colorRock" value="#555555"></div>
+                    <div class="color-row"><label>Snow</label><input type="color" id="colorSnow" value="#ffffff"></div>
 
-                <button id="btnRegenerateTrees">♻ Regenerate Trees</button>
+                    <h3>Surface Levels</h3>
+                    <div class="row"><label>Sea Level</label><span id="oceanVal" class="val">-0.79</span></div>
+                    <input type="range" id="oceanLevel" min="-1.0" max="0.6" step="0.001" value="-0.79">
+
+                    <div class="row"><label>Snow Line</label><span id="snowVal" class="val">0.60</span></div>
+                    <input type="range" id="snowLevel" min="0.0" max="1.2" step="0.01" value="0.60">
+
+                    <div class="row"><label>Vegetation</label><span id="moistVal" class="val">0.0</span></div>
+                    <input type="range" id="moistureOffset" min="-1.0" max="1.0" step="0.01" value="0.0">
+
+                    <h3>🌲 Vegetation</h3>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="enableTrees" checked>
+                        <label for="enableTrees">Enable Trees</label>
+                    </div>
+                    <div class="row"><label>Density</label><span id="treeDensVal" class="val">50</span></div>
+                    <input type="range" id="treeDensity" min="0" max="100" step="1" value="50">
+                    
+                    <div class="row"><label>Size</label><span id="treeSizeVal" class="val">1.0</span></div>
+                    <input type="range" id="treeSize" min="0.3" max="3.0" step="0.1" value="1.0">
+                </div>
+                
+                <!-- Rings Tab -->
+                <div id="tab-rings" class="tab-content">
+                    <h3>💍 Planetary Rings</h3>
+                    <div class="checkbox-row gold-accent">
+                        <input type="checkbox" id="enableRings">
+                        <label for="enableRings">Enable Rings</label>
+                    </div>
+                    
+                    <div class="rings-controls disabled">
+                        <div class="row"><label>Diameter</label><span id="ringDiameterVal" class="val">2.5</span></div>
+                        <input type="range" id="ringDiameter" min="1.5" max="2.0" step="0.1" value="2.5">
+                        
+                        <h3>Ring Colors</h3>
+                        <div class="color-row"><label>Inner Ring</label><input type="color" id="ringColorInner" value="#FFD700"></div>
+                        <div class="color-row"><label>Outer Ring</label><input type="color" id="ringColorOuter" value="#DAA520"></div>
+                    </div>
+                </div>
 
                 <h3>System</h3>
                 <div class="btn-group" id="fileButtons">
@@ -229,7 +299,6 @@
                 </div>
                 <input type="file" id="fileInputData" accept=".zip,.json,.planet">
                 
-                <!-- Embedded Mode: Send to System Editor -->
                 <button id="btnSendToSystem" class="send-btn" style="display:none; margin-top:8px; width:100%; padding:12px; background:linear-gradient(135deg, #ff6600, #ff8833); color:#000; border:none; border-radius:4px; font-weight:bold; cursor:pointer; text-transform:uppercase; letter-spacing:1px;">
                     📤 Send to System Editor
                 </button>
@@ -244,6 +313,16 @@
             const panel = document.getElementById(panelId);
             panel.classList.toggle('collapsed');
         }
+        
+        // Tab Switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+            });
+        });
     </script>
 
     <script type="module">
@@ -281,8 +360,31 @@
         }
 
         let rng = mulberry32(0);
-        let currentSeed = "Cosmos";
-        let importedHeightMapBase64 = null; // Store image data for ZIP export
+        let currentSeed = "1225Davis";
+        let importedHeightMapBase64 = null;
+
+        function randomizeRingColors() {
+            const grassColor = new THREE.Color($('colorGrass').value);
+            const hsl = {};
+            grassColor.getHSL(hsl);
+            
+            // Generate soft pastel colors from grass
+            // Inner ring: brighter pastel variation
+            const innerHue = (hsl.h + 0.05 + Math.random() * 0.08) % 1.0;
+            const innerSat = Math.max(0.1, hsl.s * (0.4 + Math.random() * 0.3));
+            const innerLight = Math.min(0.9, hsl.l + 0.2 + Math.random() * 0.25);
+            
+            // Outer ring: analogous pastel
+            const outerHue = (hsl.h + 0.15 + Math.random() * 0.1) % 1.0;
+            const outerSat = Math.max(0.1, hsl.s * (0.4 + Math.random() * 0.3));
+            const outerLight = Math.min(0.85, hsl.l + 0.15 + Math.random() * 0.25);
+            
+            const innerColor = new THREE.Color().setHSL(innerHue, innerSat, innerLight);
+            const outerColor = new THREE.Color().setHSL(outerHue, outerSat, outerLight);
+            
+            $('ringColorInner').value = '#' + innerColor.getHexString();
+            $('ringColorOuter').value = '#' + outerColor.getHexString();
+        }
 
         // --- SETUP ---
         const scene = new THREE.Scene();
@@ -307,7 +409,7 @@
         
         const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
         bloomPass.threshold = 0.5; 
-        bloomPass.strength = 0; // Disabled by default (Planet Mode)
+        bloomPass.strength = 0;
         bloomPass.radius = 0.5;
 
         const composer = new EffectComposer(renderer);
@@ -348,74 +450,98 @@
 
                 const r = rng();
                 const randomOcean = 0.1 - r * 1.5;
-                
-                if ($('planetType').value === 'planet') {
-                    material.uniforms.oceanLevel.value = randomOcean;
-                    $('oceanLevel').value = randomOcean;
-                    $('oceanVal').textContent = randomOcean.toFixed(2);
-                    randomizeBiomeColors();
-                    randomizeTerrainParams();
-                }
+                $('oceanLevel').value = randomOcean;
+
+                randomizeBiomeColors();
+                updateUni();
+                generateTrees();
+                updateRings();
             }
-            updateUni();
-            generateTrees();
         }
 
         function randomizeBiomeColors() {
-            const type = $('planetType').value;
+        const hue = rng();
+        const complementaryHue = (hue + 0.5) % 1.0;
+        const analogousHue1 = (hue + 0.08) % 1.0;
+        const analogousHue2 = (hue - 0.08 + 1.0) % 1.0;
 
-            if (type === 'planet') {
-                const oceanH = 180 + rng() * 60;
-                $('colorOcean').value = '#' + new THREE.Color().setHSL(oceanH/360, 0.3 + rng() * 0.4, 0.65 + rng() * 0.2).getHexString();
-                const beachH = 30 + rng()*30;
-                $('colorBeach').value = '#' + new THREE.Color().setHSL(beachH/360, 0.4 + rng()*0.3, 0.75 + rng()*0.15).getHexString();
-                const grassH = rng() * 360;
-                $('colorGrass').value = '#' + new THREE.Color().setHSL(grassH/360, 0.4 + rng()*0.4, 0.3 + rng()*0.3).getHexString();
-                const rockH = rng() < 0.5 ? 30 + rng()*20 : 0;
-                $('colorRock').value = '#' + new THREE.Color().setHSL(rockH/360, 0.1 + rng()*0.2, 0.4 + rng()*0.2).getHexString();
-                $('colorSnow').value = '#' + new THREE.Color().setHSL(0, 0, 0.9 + rng()*0.1).getHexString();
-            } else if (type === 'moon') {
-                $('colorOcean').value = '#000000'; 
-                $('colorBeach').value = '#' + new THREE.Color().setHSL(0, 0, 0.2 + rng()*0.2).getHexString(); 
-                $('colorGrass').value = '#' + new THREE.Color().setHSL(0, 0, 0.3 + rng()*0.2).getHexString(); 
-                $('colorRock').value = '#' + new THREE.Color().setHSL(0, 0, 0.5 + rng()*0.3).getHexString(); 
-                $('colorSnow').value = '#ffffff'; 
-            } else if (type === 'sun') {
-                $('colorOcean').value = '#ffaa00';
-                $('colorBeach').value = '#ff8800';
-                $('colorGrass').value = '#ff4400';
-                $('colorRock').value = '#aa2200';
-                $('colorSnow').value = '#ffffaa';
-            }
+        const oceanColor = new THREE.Color().setHSL(complementaryHue, 0.5 + rng() * 0.3, 0.3 + rng() * 0.3);
+        const beachColor = new THREE.Color().setHSL(hue, 0.3 + rng() * 0.3, 0.6 + rng() * 0.2);
+        const grassColor = new THREE.Color().setHSL(analogousHue1, 0.4 + rng() * 0.4, 0.25 + rng() * 0.25);
+        const rockColor = new THREE.Color().setHSL(hue, 0.05 + rng() * 0.15, 0.2 + rng() * 0.2);
+        const snowColor = new THREE.Color().setHSL(hue, 0.05, 0.85 + rng() * 0.15);
 
-            updateBiomeUniforms();
+        $('colorOcean').value = '#' + oceanColor.getHexString();
+        $('colorBeach').value = '#' + beachColor.getHexString();
+        $('colorGrass').value = '#' + grassColor.getHexString();
+        $('colorRock').value = '#' + rockColor.getHexString();
+        $('colorSnow').value = '#' + snowColor.getHexString();
+        updateBiomeUniforms();
+
+        // Randomize sliders
+        const warpBase = 0.08, persBase = 0.18, ridgeBase = 0.15;
+        const snowBase = 0.60;
+
+        const warpRand = warpBase + (rng() - 0.5) * 0.16;
+        const persRand = persBase + (rng() - 0.5) * 0.24;
+        const ridgeRand = ridgeBase + (rng() - 0.5) * 0.20;
+        const snowRand = snowBase + (rng() - 0.5) * 0.30;
+
+        $('warpScale').value = Math.max(0, Math.min(1.0, warpRand));
+        $('persistence').value = Math.max(0, Math.min(0.8, persRand));
+        $('ridge').value = Math.max(0, Math.min(1.0, ridgeRand));
+        $('snowLevel').value = Math.max(0.3, Math.min(0.9, snowRand));
+
+        if (rng() < 0.70) {
+            $('treeDensity').value = 0;
+        } else {
+            $('treeDensity').value = 10 + Math.floor(rng() * 80); 
         }
+        $('treeDensVal').textContent = $('treeDensity').value;
 
-        function randomizeTerrainParams() {
-             if ($('planetType').value !== 'planet') return;
-
-            const warpBase = 0.00;
-            const persBase = 0.18;
-            const ridgeBase = 0.05;
-            const snowBase = 0.60;
-
-            const warpRand = warpBase + (rng() - 0.5) * 0.16;
-            const persRand = persBase + (rng() - 0.5) * 0.24;
-            const ridgeRand = ridgeBase + (rng() - 0.5) * 0.20;
-            const snowRand = snowBase + (rng() - 0.5) * 0.30;
-
-            $('warpScale').value = Math.max(0, Math.min(1.0, warpRand));
-            $('persistence').value = Math.max(0, Math.min(0.8, persRand));
-            $('ridge').value = Math.max(0, Math.min(1.0, ridgeRand));
-            $('snowLevel').value = Math.max(0.3, Math.min(0.9, snowRand));
-
-            if (rng() < 0.70) {
-                $('treeDensity').value = 0;
+        // ===== RING RANDOMIZATION (SUN-SAFE) =====
+        // Only randomize rings for non-sun planets (extremely rare - 2% chance)
+        if ($('planetType').value !== 'sun') {
+            const ringChance = rng();
+            if (ringChance < 0.02) {
+                $('enableRings').checked = true;
+                // FOR MOONS: Fixed diameter of 1.5
+                // FOR PLANETS: Random diameter between 1.5 and 2.0
+                let finalDiameter;
+                if ($('planetType').value === 'moon') {
+                    finalDiameter = 1.5;
+                } else {
+                    finalDiameter = 1.5 + rng() * 0.5;
+                }
+                $('ringDiameter').value = finalDiameter;
+                $('ringDiameterVal').textContent = finalDiameter.toFixed(1);
+                
+                // Generate soft pastel colors from grass
+                const grassColor = new THREE.Color($('colorGrass').value);
+                const hsl = {};
+                grassColor.getHSL(hsl);
+                
+                // Inner ring: brighter pastel variation
+                const innerHue = (hsl.h + 0.05 + rng() * 0.08) % 1.0;
+                const innerSat = Math.max(0.1, hsl.s * (0.4 + rng() * 0.3));
+                const innerLight = Math.min(0.9, hsl.l + 0.2 + rng() * 0.25);
+                
+                // Outer ring: analogous pastel
+                const outerHue = (hsl.h + 0.15 + rng() * 0.1) % 1.0;
+                const outerSat = Math.max(0.1, hsl.s * (0.4 + rng() * 0.3));
+                const outerLight = Math.min(0.85, hsl.l + 0.15 + rng() * 0.25);
+                
+                const innerColor = new THREE.Color().setHSL(innerHue, innerSat, innerLight);
+                const outerColor = new THREE.Color().setHSL(outerHue, outerSat, outerLight);
+                
+                $('ringColorInner').value = '#' + innerColor.getHexString();
+                $('ringColorOuter').value = '#' + outerColor.getHexString();
             } else {
-                $('treeDensity').value = 10 + Math.floor(rng() * 80); 
+                $('enableRings').checked = false;
             }
-            $('treeDensVal').textContent = $('treeDensity').value;
+            updateRingsControls();
         }
+    }
 
         // --- SHADER UTILS ---
         const shaderUtils = `
@@ -515,7 +641,7 @@
                 radius: { value: 1.0 },
                 heightScale: { value: 0.15 },
                 frequency: { value: 3.0 },
-                octaves: { value: 6 },
+                octaves: { value: 5 },
                 persistence: { value: 0.5 },
                 ridge: { value: 0.5 },
                 warpScale: { value: 0.0 },
@@ -533,7 +659,11 @@
                 rockColor: { value: new THREE.Color("#555555") },
                 snowColor: { value: new THREE.Color("#ffffff") },
                 waterNoise: { value: 1.0 },
-                isSun: { value: 0.0 }
+                isSun: { value: 0.0 },
+                // Ring uniforms
+                hasRings: { value: 0.0 },
+                ringInnerRadius: { value: 1.2 },
+                ringOuterRadius: { value: 2.5 }
             },
             vertexShader: `
                 uniform float radius;
@@ -555,6 +685,7 @@
                 varying vec2 vUv;
                 varying vec3 vBasePos;
                 varying float vSunNoise;
+                varying vec3 vWorldPos;
 
                 ${shaderUtils}
 
@@ -590,6 +721,7 @@
                     vec3 finalPos = basePos + normalize(baseDir) * displacement;
                     
                     vPos = finalPos; 
+                    vWorldPos = (modelMatrix * vec4(finalPos, 1.0)).xyz;
                     vElevation = combinedHeight;
                     vSunNoise = finalNoise; 
 
@@ -605,6 +737,12 @@
                 uniform vec3 seedOffset;
                 uniform float waterNoise;
                 uniform float isSun;
+                uniform float radius;
+                
+                // Ring uniforms
+                uniform float hasRings;
+                uniform float ringInnerRadius;
+                uniform float ringOuterRadius;
 
                 uniform vec3 oceanColor;
                 uniform vec3 beachColor;
@@ -614,6 +752,7 @@
 
                 varying vec3 vPos;
                 varying vec3 vBasePos;
+                varying vec3 vWorldPos;
                 varying float vElevation;
                 varying float vSunNoise;
                 
@@ -624,6 +763,33 @@
                     vec3 p2 = pos * 25.0 - vec3(time * 0.2, 0.0, time * 0.25);
                     vec3 p3 = pos * 8.0 + vec3(0.0, time * 0.15, time * 0.1);
                     return (snoise(p1) * 0.5 + snoise(p2) * 0.3 + snoise(p3) * 0.2);
+                }
+                
+                // Calculate ring shadow
+                float calcRingShadow(vec3 pos, vec3 lightDir) {
+                    if (hasRings < 0.5) return 1.0;
+                    
+                    // Ring plane is tilted
+                    vec3 ringNormal = normalize(vec3(0.0, 0.96, 0.3));
+                    
+                    // Ray-plane intersection
+                    float denom = dot(lightDir, ringNormal);
+                    if (abs(denom) < 0.001) return 1.0;
+                    
+                    float t = -dot(pos, ringNormal) / denom;
+                    if (t < 0.0) return 1.0;
+                    
+                    vec3 hitPoint = pos + lightDir * t;
+                    float distFromCenter = length(hitPoint);
+                    
+                    // Check if hit is within ring bounds
+                    if (distFromCenter >= ringInnerRadius && distFromCenter <= ringOuterRadius) {
+                        // Create banded shadow pattern
+                        float ringPos = (distFromCenter - ringInnerRadius) / (ringOuterRadius - ringInnerRadius);
+                        float density = 0.6 + 0.4 * sin(ringPos * 80.0) * sin(ringPos * 40.0);
+                        return 1.0 - density * 0.7;
+                    }
+                    return 1.0;
                 }
 
                 void main() {
@@ -700,10 +866,13 @@
                             }
                         }
                     }
+                    
+                    // Calculate ring shadow
+                    float ringShadow = calcRingShadow(vPos, L);
 
-                    float diff = max(dot(N, L), 0.0);
+                    float diff = max(dot(N, L), 0.0) * ringShadow;
                     vec3 reflectDir = reflect(-L, N);
-                    float spec = pow(max(dot(V, reflectDir), 0.0), 32.0) * specular;
+                    float spec = pow(max(dot(V, reflectDir), 0.0), 32.0) * specular * ringShadow;
                     vec3 finalColor = color * (diff * 0.7 + 0.4) + vec3(spec);
                     gl_FragColor = vec4(finalColor, 1.0);
                 }
@@ -926,54 +1095,241 @@
             coneInstances.instanceMatrix.needsUpdate = true; coneInstances.instanceColor.needsUpdate = true;
         }
 
+        function generateRingColorsFromGrass() {
+        const grassColor = new THREE.Color($('colorGrass').value);
+        
+        // Convert to HSL for easy manipulation
+        const hsl = {};
+        grassColor.getHSL(hsl);
+        
+        // Create soft pastel variations of grass color
+        // Inner ring: brighter, less saturated
+        const innerHue = (hsl.h + 0.06) % 1.0;
+        const innerSat = Math.max(0.1, hsl.s * 0.45); // More pastel
+        const innerLight = Math.min(0.92, hsl.l + 0.35); // Brighter
+        
+        // Outer ring: analogous hue, also pastel
+        const outerHue = (hsl.h + 0.18) % 1.0;
+        const outerSat = Math.max(0.1, hsl.s * 0.55);
+        const outerLight = Math.min(0.88, hsl.l + 0.28);
+        
+        const innerColor = new THREE.Color().setHSL(innerHue, innerSat, innerLight);
+        const outerColor = new THREE.Color().setHSL(outerHue, outerSat, outerLight);
+        
+        // Update color inputs
+        $('ringColorInner').value = '#' + innerColor.getHexString();
+        $('ringColorOuter').value = '#' + outerColor.getHexString();
+    }
+
+        // --- RINGS ---
+        let ringMesh = null;
+        
+        // Helper function to create square ring geometry
+        function createSquareRingGeometry(innerSize, outerSize) {
+            const shape = new THREE.Shape();
+            const hole = new THREE.Path();
+            
+            // Outer square
+            shape.moveTo(-outerSize/2, -outerSize/2);
+            shape.lineTo(outerSize/2, -outerSize/2);
+            shape.lineTo(outerSize/2, outerSize/2);
+            shape.lineTo(-outerSize/2, outerSize/2);
+            shape.lineTo(-outerSize/2, -outerSize/2);
+            
+            // Inner square (hole)
+            hole.moveTo(-innerSize/2, -innerSize/2);
+            hole.lineTo(innerSize/2, -innerSize/2);
+            hole.lineTo(innerSize/2, innerSize/2);
+            hole.lineTo(-innerSize/2, innerSize/2);
+            hole.lineTo(-innerSize/2, -innerSize/2);
+            shape.holes.push(hole);
+            
+            const geometry = new THREE.ShapeGeometry(shape);
+            // Rotate to be flat on XZ plane like circular rings
+            geometry.rotateX(-Math.PI / 2);
+            return geometry;
+        }
+        
+        function updateRingDiameterConstraints() {
+            const type = $('planetType').value;
+            const diameterSlider = $('ringDiameter');
+            const diameterValue = $('ringDiameterVal');
+            
+            if (type === 'moon') {
+                // Moon: Fixed diameter of 1.5, cannot be changed
+                diameterSlider.max = "1.5";
+                diameterSlider.min = "1.5";
+                diameterSlider.value = "1.5";
+                diameterSlider.disabled = true;
+                diameterValue.textContent = "1.5";
+            } else if (type === 'sun') {
+                // Sun: Rings disabled entirely
+                diameterSlider.disabled = true;
+            } else {
+                // Planet: Normal constraints
+                diameterSlider.max = "2.0";
+                diameterSlider.min = "1.5";
+                diameterSlider.disabled = false;
+            }
+        }
+        
+        function updateRings() {
+            // Remove existing ring
+            if (ringMesh) {
+                scene.remove(ringMesh);
+                ringMesh = null;
+            }
+            
+            const enabled = $('enableRings').checked;
+            material.uniforms.hasRings.value = enabled ? 1.0 : 0.0;
+            
+            if (!enabled) return;
+            
+            const planetRadius = parseFloat($('radius').value);
+            const diameter = parseFloat($('ringDiameter').value);
+            const innerRadius = planetRadius * 1.2;
+            const outerRadius = planetRadius * diameter;
+            
+            // Update shader uniforms
+            material.uniforms.ringInnerRadius.value = innerRadius;
+            material.uniforms.ringOuterRadius.value = outerRadius;
+            
+            const innerColor = new THREE.Color($('ringColorInner').value);
+            const outerColor = new THREE.Color($('ringColorOuter').value);
+            
+            // Create appropriate ring geometry based on planet shape
+            let ringGeometry;
+            if (geometryMode === 'cube') {
+                // Cube planets get square rings
+                ringGeometry = createSquareRingGeometry(innerRadius * 2, outerRadius * 2);
+            } else {
+                // Normal circular rings
+                ringGeometry = new THREE.RingGeometry(innerRadius, outerRadius, 128, 8);
+            }
+            
+            // Custom ring shader for banded appearance
+            const ringMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    innerColor: { value: innerColor },
+                    outerColor: { value: outerColor },
+                    innerRadius: { value: innerRadius },
+                    outerRadius: { value: outerRadius }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    varying float vDist;
+                    void main() {
+                        vUv = uv;
+                        vDist = length(position.xy);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 innerColor;
+                    uniform vec3 outerColor;
+                    uniform float innerRadius;
+                    uniform float outerRadius;
+                    varying vec2 vUv;
+                    varying float vDist;
+                    
+                    void main() {
+                        float t = (vDist - innerRadius) / (outerRadius - innerRadius);
+                        vec3 color = mix(innerColor, outerColor, t);
+                        
+                        // Create banded pattern
+                        float bands = sin(t * 80.0) * sin(t * 40.0) * sin(t * 120.0);
+                        float density = 0.6 + 0.4 * bands;
+                        
+                        // Fade at edges
+                        float edgeFade = smoothstep(0.0, 0.1, t) * smoothstep(1.0, 0.9, t);
+                        
+                        gl_FragColor = vec4(color, density * edgeFade * 0.8);
+                    }
+                `,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            
+            ringMesh = new THREE.Mesh(ringGeometry, ringMaterial);
+            ringMesh.rotation.y = 0.3; // Slight tilt (only Y rotation for both types)
+            scene.add(ringMesh);
+        }
+        
+        function updateRingsControls() {
+            const enabled = $('enableRings').checked;
+            const controls = document.querySelector('.rings-controls');
+            if (enabled) {
+                controls.classList.remove('disabled');
+            } else {
+                controls.classList.add('disabled');
+            }
+        }
+
         // --- UI LOGIC ---
         const $ = (id) => document.getElementById(id);
         
         // Handle Planet Types
         $('planetType').addEventListener('change', (e) => {
-            const type = e.target.value;
-            const radiusSlider = $('radius');
+        const type = e.target.value;
+        const radiusSlider = $('radius');
+        
+        if (type === 'moon') {
+            radiusSlider.max = "0.5"; // MOON: Max radius 0.5
+            if(parseFloat(radiusSlider.value) > 0.5) radiusSlider.value = "0.5";
+
+            $('enableTrees').checked = false;
+            $('oceanLevel').value = -0.95; 
+            radiusSlider.value = 0.50;
+            material.uniforms.isSun.value = 0.0;
+            lensflare.visible = false;
+            bloomPass.strength = 0.0;
+            $('enableRings').disabled = false; // ENABLE rings for moons
             
-            if (type === 'moon') {
-                radiusSlider.max = "0.75";
-                if(parseFloat(radiusSlider.value) > 2.0) radiusSlider.value = "2.0";
-
-                $('enableTrees').checked = false;
-                $('oceanLevel').value = -0.95; 
-                radiusSlider.value = 0.50; // Moon Radius
-                material.uniforms.isSun.value = 0.0;
-                lensflare.visible = false;
-                bloomPass.strength = 0.0; // Disable Glow
-                randomizeBiomeColors();
-            } else if (type === 'sun') {
-                radiusSlider.max = "4.0"; // Allow bigger radius for Sun
-
-                $('enableTrees').checked = false;
-                $('oceanLevel').value = -1.0; 
-                radiusSlider.value = 1.00; // Reset Radius
-                material.uniforms.isSun.value = 1.0;
-                lensflare.visible = true;
-                bloomPass.strength = 1.2; // Enable Glow
-                randomizeBiomeColors(); 
-            } else {
-                // Planet
-                radiusSlider.max = "1.0";
-                if(parseFloat(radiusSlider.value) > 2.0) radiusSlider.value = "2.0";
-
-                material.uniforms.isSun.value = 0.0;
-                radiusSlider.value = 1.00; // Reset Radius
-                lensflare.visible = false;
-                bloomPass.strength = 0.0; // Disable Glow
+            // MOON: Rings locked to diameter 1.5
+            updateRingDiameterConstraints();
+            if ($('enableRings').checked) {
+                updateRings(); // Regenerate with square geometry if needed
             }
-            updateUni();
-            generateTrees();
-        });
+        } else if (type === 'sun') {
+            radiusSlider.max = "4.0";
+
+            $('enableTrees').checked = false;
+            $('oceanLevel').value = -1.0; 
+            radiusSlider.value = 1.00;
+            material.uniforms.isSun.value = 1.0;
+            lensflare.visible = true;
+            bloomPass.strength = 1.2;
+            $('enableRings').checked = false; // Force OFF
+            $('enableRings').disabled = true;  // DISABLE rings for suns
+            
+            updateRingDiameterConstraints();
+        } else {
+            radiusSlider.max = "2.0";
+            if(parseFloat(radiusSlider.value) > 2.0) radiusSlider.value = "2.0";
+
+            material.uniforms.isSun.value = 0.0;
+            radiusSlider.value = 1.00;
+            lensflare.visible = false;
+            bloomPass.strength = 0.0;
+            $('enableRings').disabled = false; // ENABLE rings for planets
+            
+            updateRingDiameterConstraints();
+        }
+        updateUni();
+        generateTrees();
+        updateRings();
+    });
 
         function setGeo(mode, btnId) {
             geometryMode = mode;
             createGeometry();
             ['typeQuad', 'typeCube'].forEach(id => $(id).classList.remove('active-geo'));
             $(btnId).classList.add('active-geo');
+            // Regenerate rings if they exist to match new geometry
+            if ($('enableRings').checked) {
+                updateRings();
+            }
         }
         $('typeQuad').onclick = () => setGeo('quad', 'typeQuad');
         $('typeCube').onclick = () => setGeo('cube', 'typeCube');
@@ -990,22 +1346,17 @@
             const m = material.uniforms;
             const newRadius = parseFloat($('radius').value);
 
-            // --- AUTO ZOOM LOGIC ---
-            // Ensure camera doesn't get swallowed by the growing planet
-            // 3.8 is the initial distance ratio (3.8 dist for 1.0 radius)
             const minCameraDist = newRadius * 3.8; 
             if (camera.position.length() < minCameraDist) {
-                // Push camera out along its current view vector
                 camera.position.setLength(minCameraDist);
-                controls.update(); // Update orbit controls state
+                controls.update();
             }
-            // -----------------------
 
             m.radius.value = newRadius;
             m.warpScale.value = parseFloat($('warpScale').value);
             m.heightScale.value = parseFloat($('heightScale').value);
             m.frequency.value = parseFloat($('frequency').value);
-            m.octaves.value = parseInt($('octaves').value);
+            m.octaves.value = 5; // Fixed at 5
             m.persistence.value = parseFloat($('persistence').value);
             m.ridge.value = parseFloat($('ridge').value);
             m.oceanLevel.value = parseFloat($('oceanLevel').value);
@@ -1020,7 +1371,6 @@
             $('warpVal').textContent = m.warpScale.value.toFixed(2);
             $('heightVal').textContent = m.heightScale.value.toFixed(3);
             $('freqVal').textContent = m.frequency.value.toFixed(2);
-            $('octVal').textContent = m.octaves.value;
             $('persVal').textContent = m.persistence.value.toFixed(2);
             $('ridgeVal').textContent = m.ridge.value.toFixed(2);
             $('oceanVal').textContent = m.oceanLevel.value.toFixed(2);
@@ -1037,8 +1387,36 @@
         $('treeDensity').addEventListener('change', generateTrees);
         $('treeSize').addEventListener('input', () => $('treeSizeVal').textContent = parseFloat($('treeSize').value).toFixed(1));
         $('treeSize').addEventListener('change', generateTrees);
-        $('btnRegenerateTrees').addEventListener('click', generateTrees);
         ['radius', 'heightScale', 'oceanLevel', 'snowLevel'].forEach(id => $(id).addEventListener('change', generateTrees));
+        
+        // Rings controls
+        $('enableRings').addEventListener('change', () => {
+            const enabled = $('enableRings').checked;
+            if (enabled && $('planetType').value === 'moon') {
+                // MOON: Force diameter to 1.5 when enabling rings
+                $('ringDiameter').value = 1.5;
+                $('ringDiameterVal').textContent = "1.5";
+            }
+            
+            // Randomize
+            if (enabled) {
+                const currentInner = $('ringColorInner').value.toLowerCase();
+                const currentOuter = $('ringColorOuter').value.toLowerCase();
+                // Check if colors are still the default yellows
+                if (currentInner === '#ffd700' && currentOuter === '#daa520') {
+                    randomizeRingColors();
+                }
+            }
+            
+            updateRingsControls();
+            updateRings();
+        });
+        $('ringDiameter').addEventListener('input', () => {
+            $('ringDiameterVal').textContent = parseFloat($('ringDiameter').value).toFixed(1);
+        });
+        $('ringDiameter').addEventListener('change', updateRings);
+        ['ringColorInner', 'ringColorOuter'].forEach(id => $(id).addEventListener('input', updateRings));
+        $('radius').addEventListener('change', updateRings);
 
         $('seedInput').addEventListener('change', (e) => updateRNG(e.target.value));
         $('randomSeed').onclick = () => {
@@ -1051,67 +1429,65 @@
         $('fileInputHM').onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            
-            // Read as Data URL to store for ZIP export later
             const reader = new FileReader();
-            reader.onload = function(evt) {
-                importedHeightMapBase64 = evt.target.result;
-                new THREE.TextureLoader().load(importedHeightMapBase64, (tex) => {
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const tex = new THREE.Texture(img);
+                    tex.needsUpdate = true;
                     material.uniforms.heightMap.value = tex;
-                    $('texMix').value = 1.0;
+                    importedHeightMapBase64 = event.target.result.split(',')[1];
+                    if(parseFloat($('texMix').value) < 0.3) $('texMix').value = 0.5;
                     updateUni();
                     generateTrees();
-                });
+                };
+                img.src = event.target.result;
             };
             reader.readAsDataURL(file);
         };
 
-        // --- PLANET DATA EXTRACTION ---
         function getPlanetData() {
+            const params = {
+                radius: parseFloat($('radius').value),
+                warpScale: parseFloat($('warpScale').value),
+                heightScale: parseFloat($('heightScale').value),
+                frequency: parseFloat($('frequency').value),
+                octaves: 5,
+                persistence: parseFloat($('persistence').value),
+                ridge: parseFloat($('ridge').value),
+                oceanLevel: parseFloat($('oceanLevel').value),
+                snowLevel: parseFloat($('snowLevel').value),
+                moistureOffset: parseFloat($('moistureOffset').value),
+                texMix: parseFloat($('texMix').value),
+                waterNoise: $('waterNoise').checked,
+                enableTrees: $('enableTrees').checked,
+                treeDensity: parseInt($('treeDensity').value),
+                treeSize: parseFloat($('treeSize').value),
+                enableRings: $('enableRings').checked,
+                ringDiameter: parseFloat($('ringDiameter').value),
+                ringColorInner: $('ringColorInner').value,
+                ringColorOuter: $('ringColorOuter').value
+            };
             return {
                 seed: currentSeed,
-                type: $('planetType').value, 
                 mode: geometryMode,
-                hasHeightMap: !!importedHeightMapBase64,
-                heightmapBase64: importedHeightMapBase64 ? importedHeightMapBase64.split(',')[1] : null,
-                params: {
-                    radius: $('radius').value,
-                    warpScale: $('warpScale').value,
-                    heightScale: $('heightScale').value,
-                    frequency: $('frequency').value,
-                    octaves: $('octaves').value,
-                    persistence: $('persistence').value,
-                    ridge: $('ridge').value,
-                    oceanLevel: $('oceanLevel').value,
-                    snowLevel: $('snowLevel').value,
-                    moistureOffset: $('moistureOffset').value,
-                    texMix: $('texMix').value,
-                    waterNoise: $('waterNoise').checked,
-                    enableTrees: $('enableTrees').checked,
-                    treeDensity: $('treeDensity').value,
-                    treeSize: $('treeSize').value
-                },
+                type: $('planetType').value,
+                params: params,
                 colors: {
                     ocean: $('colorOcean').value,
                     beach: $('colorBeach').value,
                     grass: $('colorGrass').value,
                     rock: $('colorRock').value,
                     snow: $('colorSnow').value
-                }
+                },
+                heightmapBase64: importedHeightMapBase64
             };
         }
-        
-        // Expose for embedded mode
-        window.getPlanetData = getPlanetData;
 
-        // --- EMBEDDED MODE DETECTION ---
-        const isEmbedded = window.parent !== window || new URLSearchParams(window.location.search).has('embedded');
-        
-        if (isEmbedded) {
-            // Show "Send to System" button
+        // Embedded Mode Detection
+        if (window.self !== window.top) {
             $('btnSendToSystem').style.display = 'block';
             
-            // Make file buttons smaller in embedded mode
             const fileButtons = $('fileButtons');
             if (fileButtons) {
                 fileButtons.querySelectorAll('button').forEach(btn => {
@@ -1120,7 +1496,6 @@
                 });
             }
             
-            // Send to System button handler
             $('btnSendToSystem').onclick = () => {
                 const data = getPlanetData();
                 window.parent.postMessage({
@@ -1128,7 +1503,6 @@
                     data: data
                 }, '*');
                 
-                // Visual feedback
                 const btn = $('btnSendToSystem');
                 const originalText = btn.textContent;
                 btn.textContent = '✓ Staged!';
@@ -1145,13 +1519,11 @@
             const zip = new JSZip();
             const data = getPlanetData();
             
-            // Remove heightmapBase64 from JSON (it's stored separately)
             const jsonData = {...data};
             delete jsonData.heightmapBase64;
             
             zip.file("planet_data.json", JSON.stringify(jsonData, null, 2));
             
-            // Include heightmap image if it exists
             if (data.heightmapBase64) {
                 zip.file("heightmap.png", data.heightmapBase64, {base64: true});
             }
@@ -1172,20 +1544,16 @@
             if (!file) return;
             
             if (file.name.endsWith('.zip')) {
-                // Handle ZIP
                 JSZip.loadAsync(file).then(function(zip) {
-                    // Load JSON
                     return zip.file("planet_data.json").async("string").then(function(jsonStr) {
                         const data = JSON.parse(jsonStr);
                         applyPlanetData(data);
                         
-                        // Check for Heightmap Image
                         if (zip.file("heightmap.png")) {
                             zip.file("heightmap.png").async("base64").then(function(b64) {
                                 importedHeightMapBase64 = "data:image/png;base64," + b64;
                                 new THREE.TextureLoader().load(importedHeightMapBase64, (tex) => {
                                     material.uniforms.heightMap.value = tex;
-                                    // texMix is handled in applyPlanetData but we ensure texture is ready here
                                 });
                             });
                         } else {
@@ -1195,7 +1563,6 @@
                     });
                 }).catch(err => alert("Error reading ZIP: " + err));
             } else {
-                // Handle Legacy JSON
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     try {
@@ -1235,6 +1602,10 @@
             for(let key in data.params) {
                 if(key === 'waterNoise') $('waterNoise').checked = data.params[key];
                 else if(key === 'enableTrees') $('enableTrees').checked = data.params[key];
+                else if(key === 'enableRings') {
+                    $('enableRings').checked = data.params[key];
+                    updateRingsControls();
+                }
                 else if($(key)) $(key).value = data.params[key];
             }
             if(data.colors) {
@@ -1245,16 +1616,32 @@
                 $('colorSnow').value = data.colors.snow;
                 updateBiomeUniforms();
             }
+            
+            // ENFORCE MOON CONSTRAINTS on load
+            if (data.type === 'moon') {
+                if (parseFloat($('radius').value) > 0.5) {
+                    $('radius').value = "0.5";
+                }
+                // Ensure ring diameter is exactly 1.5 for moons
+                if ($('enableRings').checked) {
+                    $('ringDiameter').value = "1.5";
+                }
+            }
+            
             updateUni();
+            updateRingDiameterConstraints();
             generateTrees();
+            updateRings();
         }
 
         // Initialize
         setGeo('quad', 'typeQuad');
-        updateRNG("Cosmos");
+        updateRNG("1225Davis");
         updateUni();
         updateBiomeUniforms();
         generateTrees();
+        updateRingDiameterConstraints();
+        updateRingsControls();
 
         let frameCount = 0;
         let lastFpsUpdate = performance.now();
