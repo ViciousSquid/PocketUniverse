@@ -585,7 +585,7 @@
         // Start loading library immediately
         loadPlanetLibrary();
 
-        // --- CELESTIAL BODY CLASS ---
+                // --- CELESTIAL BODY CLASS ---
         class CelestialBody {
             constructor(data, texture, id, heightmapBase64 = null) {
                 this.id = id;
@@ -607,6 +607,12 @@
                 const seedHash = cyrb128(data.seed);
                 const rng = mulberry32(seedHash[0]);
                 const seedOffset = new THREE.Vector3(rng()*100, rng()*100, rng()*100);
+
+                // Ring support - check if data has ring parameters
+                this.hasRings = p.enableRings === true;
+                this.ringDiameter = parseFloat(p.ringDiameter || 1.5);
+                this.ringColorInner = p.ringColorInner || '#FFD700';
+                this.ringColorOuter = p.ringColorOuter || '#DAA520';
 
                 this.material = new THREE.ShaderMaterial({
                     uniforms: {
@@ -632,7 +638,11 @@
                         rockColor: { value: new THREE.Color(c.rock) },
                         snowColor: { value: new THREE.Color(c.snow) },
                         isSun: { value: this.type === 'sun' ? 1.0 : 0.0 },
-                        opacity: { value: 1.0 }
+                        opacity: { value: 1.0 },
+                        // Ring uniforms
+                        hasRings: { value: this.hasRings ? 1.0 : 0.0 },
+                        ringInnerRadius: { value: parseFloat(p.radius) * 1.2 },
+                        ringOuterRadius: { value: parseFloat(p.radius) * this.ringDiameter }
                     },
                     vertexShader: vertexShader,
                     fragmentShader: fragmentShader,
@@ -657,6 +667,12 @@
                 const ringMat = new THREE.MeshBasicMaterial({ color: 0x666666, side: THREE.DoubleSide, transparent: true, opacity: 0.15 });
                 this.orbitRing = new THREE.Mesh(ringGeo, ringMat);
                 this.orbitRing.rotation.x = Math.PI / 2;
+
+                // Create ring mesh if enabled
+                this.ringMesh = null;
+                if (this.hasRings) {
+                    this.updateRings();
+                }
             }
 
             setParent(newParent) {
@@ -678,6 +694,12 @@
 
                 this.pivot.position.set(0,0,0);
                 this.pivot.rotation.set(0,0,0);
+                
+                // Ensure rings stay with the body
+                if (this.ringMesh) {
+                    this.ringMesh.removeFromParent();
+                    this.holder.add(this.ringMesh);
+                }
             }
 
             update(dt) {
@@ -699,6 +721,95 @@
                 this.mesh.getWorldPosition(worldPos);
                 const sunDir = worldPos.clone().multiplyScalar(-1).normalize();
                 this.material.uniforms.sunDirection.value.copy(sunDir);
+                
+                // Update ring shader if it exists
+                if (this.ringMesh) {
+                    const worldPos = new THREE.Vector3();
+                    this.mesh.getWorldPosition(worldPos);
+                    // Rings need to match the body's current scale and position
+                    this.ringMesh.position.copy(this.mesh.position);
+                }
+            }
+            
+            // Ring update method
+            updateRings() {
+                if (this.ringMesh) {
+                    this.holder.remove(this.ringMesh);
+                    this.ringMesh = null;
+                }
+                
+                if (!this.hasRings) return;
+                
+                const planetRadius = parseFloat(this.data.params.radius);
+                const innerRadius = planetRadius * 1.2;
+                const outerRadius = planetRadius * this.ringDiameter;
+                
+                // Create ring geometry (match PlanetEditor logic)
+                let ringGeometry;
+                if (this.data.mode === 'cube') {
+                    // Square rings for cube planets
+                    const shape = new THREE.Shape();
+                    const hole = new THREE.Path();
+                    shape.moveTo(-outerRadius, -outerRadius);
+                    shape.lineTo(outerRadius, -outerRadius);
+                    shape.lineTo(outerRadius, outerRadius);
+                    shape.lineTo(-outerRadius, outerRadius);
+                    shape.lineTo(-outerRadius, -outerRadius);
+                    hole.moveTo(-innerRadius, -innerRadius);
+                    hole.lineTo(innerRadius, -innerRadius);
+                    hole.lineTo(innerRadius, innerRadius);
+                    hole.lineTo(-innerRadius, innerRadius);
+                    hole.lineTo(-innerRadius, -innerRadius);
+                    shape.holes.push(hole);
+                    ringGeometry = new THREE.ShapeGeometry(shape);
+                    ringGeometry.rotateX(-Math.PI / 2);
+                } else {
+                    // Circular rings
+                    ringGeometry = new THREE.RingGeometry(innerRadius, outerRadius, 128, 8);
+                }
+                
+                // Ring shader material
+                const ringMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        innerColor: { value: new THREE.Color(this.ringColorInner) },
+                        outerColor: { value: new THREE.Color(this.ringColorOuter) },
+                        innerRadius: { value: innerRadius },
+                        outerRadius: { value: outerRadius }
+                    },
+                    vertexShader: `
+                        varying vec2 vUv;
+                        varying float vDist;
+                        void main() {
+                            vUv = uv;
+                            vDist = length(position.xy);
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform vec3 innerColor;
+                        uniform vec3 outerColor;
+                        uniform float innerRadius;
+                        uniform float outerRadius;
+                        varying vec2 vUv;
+                        varying float vDist;
+                        
+                        void main() {
+                            float t = (vDist - innerRadius) / (outerRadius - innerRadius);
+                            vec3 color = mix(innerColor, outerColor, t);
+                            float bands = sin(t * 80.0) * sin(t * 40.0) * sin(t * 120.0);
+                            float density = 0.6 + 0.4 * bands;
+                            float edgeFade = smoothstep(0.0, 0.1, t) * smoothstep(1.0, 0.9, t);
+                            gl_FragColor = vec4(color, density * edgeFade * 0.8);
+                        }
+                    `,
+                    transparent: true,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                });
+                
+                this.ringMesh = new THREE.Mesh(ringGeometry, ringMaterial);
+                this.ringMesh.rotation.y = 0.3; // Match PlanetEditor tilt
+                this.holder.add(this.ringMesh);
             }
             
             // Start catastrophic death spiral
