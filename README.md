@@ -10,6 +10,9 @@ Click <a href="https://github.com/ViciousSquid/PocketUniverse/archive/refs/heads
 #### Extract the files and run index.html in your web browser. No install needed.
 
 
+-------------------
+
+
    _editors can be ran independently:_
 
 
