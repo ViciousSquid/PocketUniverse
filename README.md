@@ -25,6 +25,11 @@ Click <a href="https://github.com/ViciousSquid/PocketUniverse/archive/refs/heads
 
  _example planets, moons and suns can be found in the `planets` folder_
 
+ -----------------
+
+- Simulation mechanics: Collisions and explosions add real physics-based consequences.
+
+- Deep interaction: “Every planet is examinable”
 
 -----------------
 
